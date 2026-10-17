@@ -1,0 +1,43 @@
+name: "fishtelomericanchors"
+description: "Fish telomeric junction reads and construct candidate somatic anchors centered at pos 0"
+keywords:
+  - telomere
+  - cbm
+  - programmed dna elimination
+  - anchor
+tools:
+  - "cbmdiscovery":
+      description: "Reference-free CBM and PDE junction discovery pipeline"
+input:
+  - - meta:
+        type: map
+        description: |
+          Groovy Map containing sample information
+          e.g. `[ id:'sample1', platform:'hifi', single_end:true ]`
+    - reads:
+        type: file
+        description: Raw sequencing FASTQ file(s)
+  - - telomere_repeat:
+        type: string
+        description: Canonical telomeric repeat motif (default: TTAGGC)
+output:
+  - candidate_anchors:
+      - meta:
+          type: map
+          description: Groovy Map containing sample information
+      - "*.candidate_anchors.fasta":
+          type: file
+          description: FASTA containing candidate somatic anchors
+  - summary_json:
+      - meta:
+          type: map
+          description: Groovy Map containing sample information
+      - "*.pass1_summary.json":
+          type: file
+          description: JSON file summarizing telomeric fishing statistics
+  - versions:
+      - versions.yml:
+          type: file
+          description: File containing software versions
+authors:
+  - "@pgonzale60"

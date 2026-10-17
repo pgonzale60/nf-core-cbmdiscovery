@@ -1,0 +1,7 @@
+name: bipartiteprofiler
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - bioconda::meme=5.5.5
+  - python>=3.10

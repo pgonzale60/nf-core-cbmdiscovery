@@ -1,0 +1,7 @@
+name: baitgermlinejunctions
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - bioconda::kmc=3.2.4
+  - python>=3.10

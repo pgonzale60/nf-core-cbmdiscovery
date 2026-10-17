@@ -1,0 +1,170 @@
+#!/usr/bin/env python3
+"""Unit tests for baitgermlinejunctions module."""
+
+import pathlib
+import sys
+import unittest
+
+# Ensure module lib is importable
+CUR = pathlib.Path(__file__).resolve().parent
+REPO_ROOT = CUR
+while REPO_ROOT.parent != REPO_ROOT and not (REPO_ROOT / "modules").is_dir():
+    REPO_ROOT = REPO_ROOT.parent
+
+LIB_DIR = (
+    REPO_ROOT
+    / "modules"
+    / "local"
+    / "baitgermlinejunctions"
+    / "resources"
+    / "usr"
+    / "lib"
+)
+if str(LIB_DIR) not in sys.path:
+    sys.path.insert(0, str(LIB_DIR))
+
+from baitgerm.baiter import (  # noqa: E402
+    build_kmer_bait_index,
+    revcomp,
+)
+from baitgerm.census import (  # noqa: E402
+    deconvolve_and_census,
+    deduplicate_break_windows,
+)
+from baitgerm.partitioner import partition_baited_read  # noqa: E402
+from baitgerm.reconstructor import (  # noqa: E402
+    annotate_microhomology,
+    build_300bp_break_window,
+    reconstruct_germline_consensus,
+)
+
+
+class TestBaitGermlineJunctions(unittest.TestCase):
+    def setUp(self):
+        self.repeat = "TTAGGC"
+        # 150 bp somatic anchor ending at pos 0
+        self.anchor_seq = (
+            "ATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGAT"
+            "CGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCG"
+            "ATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGCG"
+        )
+        self.assertTrue(len(self.anchor_seq) == 150)
+        # 150 bp germline flank starting at +1 with 'TTAG' microhomology
+        self.germ_flank = (
+            "TTAG"
+            + "CCGGCCGGCCGGCCGGCCGGCCGGCCGGCCGGCCGGCCGGCCGGCCGGCC"
+            + "GGCCGGCCGGCCGGCCGGCCGGCCGGCCGGCCGGCCGGCCGGCCGGCCGG"
+            + "CCGGCCGGCCGGCCGGCCGGCCGGCCGGCCGGCCGGCCGGCCGGCCGGCC"
+        )[:150]
+        self.assertTrue(len(self.germ_flank) == 150)
+
+    def test_bait_index_construction(self):
+        anchors = {"anchor_1": self.anchor_seq}
+        bait_index = build_kmer_bait_index(
+            anchors, kmer_size=31, terminal_window=60
+        )
+        self.assertGreater(len(bait_index), 0)
+        # Terminal 31-mer of anchor
+        term_kmer = self.anchor_seq[-31:]
+        self.assertIn(term_kmer, bait_index)
+        self.assertIn("anchor_1", bait_index[term_kmer])
+        # Revcomp should also be present
+        self.assertIn(revcomp(term_kmer), bait_index)
+
+    def test_partitioning_telo_vs_germline(self):
+        # Telomeric read
+        telo_read = self.anchor_seq[-60:] + (self.repeat * 8)
+        p_telo = partition_baited_read(
+            self.anchor_seq, telo_read, repeat=self.repeat
+        )
+        self.assertIsNotNone(p_telo)
+        self.assertEqual(p_telo["branch"], "telo")
+
+        # Germline read-through read
+        germ_read = self.anchor_seq[-60:] + self.germ_flank[:80]
+        p_germ = partition_baited_read(
+            self.anchor_seq, germ_read, repeat=self.repeat
+        )
+        self.assertIsNotNone(p_germ)
+        self.assertEqual(p_germ["branch"], "germline")
+        self.assertEqual(p_germ["germline_ext"], self.germ_flank[:80])
+
+    def test_reconstruction_and_microhomology(self):
+        # Multiple reads with small sequencing noise
+        exts = [
+            self.germ_flank,
+            self.germ_flank[:-5] + "A" * 5,
+            self.germ_flank,
+        ]
+        cons, coherence = reconstruct_germline_consensus(exts, max_len=150)
+        self.assertEqual(cons, self.germ_flank)
+        self.assertGreaterEqual(coherence, 0.95)
+
+        mh_len, mh_motif = annotate_microhomology(cons, repeat=self.repeat)
+        self.assertEqual(mh_len, 4)
+        self.assertEqual(mh_motif, "TTAG")
+
+        win = build_300bp_break_window(self.anchor_seq, cons)
+        self.assertEqual(len(win), 300)
+        self.assertEqual(win[:150], self.anchor_seq)
+        self.assertEqual(win[150:], self.germ_flank)
+
+    def test_chimeric_noise_rejection(self):
+        # Highly discordant reads
+        exts = [
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+            "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+        ]
+        _cons, coherence = reconstruct_germline_consensus(exts, max_len=40)
+        # Coherence will be ~0.33, well below 0.85
+        self.assertLess(coherence, 0.85)
+
+        loci = [{
+            "anchor_id": "anchor_noise",
+            "c_telo": 15,
+            "c_germ": 3,
+            "coherence": coherence,
+            "break_window": "",
+        }]
+        classified, _census = deconvolve_and_census(
+            loci, min_germ_reads=2, min_coherence=0.85
+        )
+        # Should NOT be classified as PDE_BREAK_SITE
+        self.assertNotEqual(classified[0]["classification"], "PDE_BREAK_SITE")
+
+    def test_deconvolve_and_census(self):
+        loci = [
+            # Authentic PDE break site
+            {
+                "anchor_id": "a_break",
+                "c_telo": 24,
+                "c_germ": 6,
+                "coherence": 0.98,
+                "break_window": "ACGT" * 75,
+            },
+            # Germline native telomere (low telo, 0 germ)
+            {
+                "anchor_id": "a_native",
+                "c_telo": 5,
+                "c_germ": 0,
+                "coherence": 0.0,
+                "break_window": "",
+            },
+        ]
+        deduped = deduplicate_break_windows(loci)
+        classified, census = deconvolve_and_census(deduped, min_germ_reads=2)
+
+        class_map = {l["anchor_id"]: l["classification"] for l in classified}
+        self.assertEqual(class_map["a_break"], "PDE_BREAK_SITE")
+        self.assertEqual(class_map["a_native"], "GERMLINE_NATIVE_TELOMERE")
+
+        self.assertEqual(census["n_breaks"], 1)
+        self.assertEqual(census["n_germ_telo"], 1)
+        self.assertEqual(census["median_c_soma"], 24.0)
+        self.assertEqual(census["median_c_germ"], 6.0)
+        self.assertAlmostEqual(census["germline_fraction"], 0.20, places=2)
+
+
+if __name__ == "__main__":
+    unittest.main()

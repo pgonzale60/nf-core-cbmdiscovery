@@ -5,6 +5,10 @@
 */
 include { FASTQC                 } from '../modules/nf-core/fastqc/main'
 include { MULTIQC                } from '../modules/nf-core/multiqc/main'
+include { FISHTELOMERICANCHORS   } from '../modules/local/fishtelomericanchors/main'
+include { BAITGERMLINEJUNCTIONS  } from '../modules/local/baitgermlinejunctions/main'
+include { MEMECOREGRID           } from '../modules/local/memecoregrid/main'
+include { BIPARTITEPROFILER      } from '../modules/local/bipartiteprofiler/main'
 include { paramsSummaryMap       } from 'plugin/nf-schema'
 include { paramsSummaryMultiqc   } from '../subworkflows/nf-core/utils_nfcore_pipeline'
 include { softwareVersionsToYAML } from '../subworkflows/nf-core/utils_nfcore_pipeline'
@@ -29,11 +33,58 @@ workflow CBMDISCOVERY {
 
     def ch_versions = channel.empty()
     def ch_multiqc_files = channel.empty()
+
     //
     // MODULE: Run FastQC
     //
     FASTQC(ch_samplesheet)
     ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.map{ _meta, file -> file })
+
+    //
+    // STAGE 1: Fish telomeric reads and construct candidate somatic anchors
+    //
+    FISHTELOMERICANCHORS (
+        ch_samplesheet,
+        params.telomere_repeat
+    )
+    ch_versions = ch_versions.mix(FISHTELOMERICANCHORS.out.versions_python)
+
+    //
+    // STAGE 2 & 3: K-mer baiting, germline reconstruction, microhomology & junction census
+    //
+    ch_bait_input = FISHTELOMERICANCHORS.out.candidate_anchors
+        .join(ch_samplesheet)
+
+    BAITGERMLINEJUNCTIONS (
+        ch_bait_input,
+        params.telomere_repeat,
+        params.kmer_size,
+        params.min_germ_reads
+    )
+    ch_versions = ch_versions.mix(BAITGERMLINEJUNCTIONS.out.versions_python)
+
+    //
+    // STAGE 4: Tier-1 Core motif parameter grid search
+    //
+    MEMECOREGRID (
+        BAITGERMLINEJUNCTIONS.out.break_windows_fasta
+    )
+    ch_versions = ch_versions.mix(MEMECOREGRID.out.versions_python)
+    ch_versions = ch_versions.mix(MEMECOREGRID.out.versions_meme)
+
+    //
+    // STAGE 5: Core-masking, Tier-2 auxiliary grid search & bipartite profiler
+    //
+    ch_bipartite_input = BAITGERMLINEJUNCTIONS.out.break_windows_fasta
+        .join(MEMECOREGRID.out.best_core_motif)
+        .join(BAITGERMLINEJUNCTIONS.out.census_json)
+        .join(MEMECOREGRID.out.motif_metrics_json)
+
+    BIPARTITEPROFILER (
+        ch_bipartite_input
+    )
+    ch_versions = ch_versions.mix(BIPARTITEPROFILER.out.versions_python)
+    ch_versions = ch_versions.mix(BIPARTITEPROFILER.out.versions_meme)
 
     //
     // Collate and save software versions
@@ -90,8 +141,19 @@ workflow CBMDISCOVERY {
             ]
         }
     )
-    emit:multiqc_report = MULTIQC.out.report.map { _meta, report -> [report] }.toList() // channel: /path/to/multiqc_report.html
-    versions       = ch_versions                 // channel: [ path(versions.yml) ]
+
+    emit:
+    candidate_anchors     = FISHTELOMERICANCHORS.out.candidate_anchors
+    break_windows_fasta   = BAITGERMLINEJUNCTIONS.out.break_windows_fasta
+    junction_catalog      = BAITGERMLINEJUNCTIONS.out.junction_catalog
+    census_json           = BAITGERMLINEJUNCTIONS.out.census_json
+    best_core_motif       = MEMECOREGRID.out.best_core_motif
+    grid_summary_tsv      = MEMECOREGRID.out.grid_summary_tsv
+    best_auxiliary_motif  = BIPARTITEPROFILER.out.best_auxiliary_motif
+    bipartite_spacing_tsv = BIPARTITEPROFILER.out.bipartite_spacing_tsv
+    discovery_report_md   = BIPARTITEPROFILER.out.discovery_report_md
+    multiqc_report        = MULTIQC.out.report.map { _meta, report -> [report] }.toList()
+    versions              = ch_versions
 }
 
 /*

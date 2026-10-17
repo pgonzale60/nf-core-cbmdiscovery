@@ -1,0 +1,60 @@
+name: "baitgermlinejunctions"
+description: "K-mer baiting of raw reads, germline branch reconstruction, microhomology annotation, and junction census"
+keywords:
+  - kmer
+  - baiting
+  - germline
+  - reconstruction
+  - microhomology
+  - deconvolution
+tools:
+  - "cbmdiscovery":
+      description: "Reference-free CBM and PDE junction discovery pipeline"
+input:
+  - - meta:
+        type: map
+        description: |
+          Groovy Map containing sample information
+    - candidate_anchors:
+        type: file
+        description: FASTA containing candidate somatic anchors from Stage 1
+    - reads:
+        type: file
+        description: Raw sequencing FASTQ file(s)
+  - - telomere_repeat:
+        type: string
+        description: Canonical telomeric repeat motif (default: TTAGGC)
+  - - kmer_size:
+        type: integer
+        description: K-mer bait size (default: 31)
+  - - min_germ_reads:
+        type: integer
+        description: Minimum germline read-through reads (default: 2)
+output:
+  - break_windows_fasta:
+      - meta:
+          type: map
+          description: Groovy Map containing sample information
+      - "*.break_windows_300bp.fasta":
+          type: file
+          description: FASTA of 300 bp reconstructed break windows for PDE break sites
+  - junction_catalog:
+      - meta:
+          type: map
+          description: Groovy Map containing sample information
+      - "*.junction_catalog.tsv":
+          type: file
+          description: TSV catalog of deconvolved junctions
+  - census_json:
+      - meta:
+          type: map
+          description: Groovy Map containing sample information
+      - "*.coverage_and_chromosome_census.json":
+          type: file
+          description: JSON file summarizing coverage and chromosome census
+  - versions:
+      - versions.yml:
+          type: file
+          description: File containing software versions
+authors:
+  - "@pgonzale60"

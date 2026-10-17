@@ -230,11 +230,40 @@
                     "description": "Display hidden parameters in the help message (only works when --help or --help_full are provided)."
                 }
             }
+        },
+        "cbm_discovery_options": {
+            "title": "CBM discovery options",
+            "type": "object",
+            "fa_icon": "fas fa-dna",
+            "description": "Parameters for reference-free CBM and PDE junction discovery.",
+            "properties": {
+                "telomere_repeat": {
+                    "type": "string",
+                    "default": "TTAGGC",
+                    "description": "Canonical telomere repeat motif (e.g. 'TTAGGC').",
+                    "fa_icon": "fas fa-redo"
+                },
+                "kmer_size": {
+                    "type": "integer",
+                    "default": 31,
+                    "description": "K-mer size for anchor baiting.",
+                    "fa_icon": "fas fa-ruler"
+                },
+                "min_germ_reads": {
+                    "type": "integer",
+                    "default": 2,
+                    "description": "Minimum germline read-through reads required to reconstruct a germline branch.",
+                    "fa_icon": "fas fa-filter"
+                }
+            }
         }
     },
     "allOf": [
         {
             "$ref": "#/$defs/input_output_options"
+        },
+        {
+            "$ref": "#/$defs/cbm_discovery_options"
         },
         {
             "$ref": "#/$defs/reference_genome_options"
