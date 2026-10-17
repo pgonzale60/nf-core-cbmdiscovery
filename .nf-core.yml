@@ -1,0 +1,16 @@
+repository_type: pipeline
+
+nf_core_version: 4.1.1.dev0
+
+lint: {}
+
+template:
+  org: nf-core
+  name: cbmdiscovery
+  description: Reference-free discovery and characterization of Programmed DNA Elimination
+    Chromosome Breakage Motifs from raw sequencing reads
+  author: Pablo M. Gonzalez de la Rosa
+  version: 1.0.0
+  force: true
+  outdir: /Users/pgonzale60/Documents/research/sanger_curation/nf-core-cbmdiscovery
+  is_nfcore: true
