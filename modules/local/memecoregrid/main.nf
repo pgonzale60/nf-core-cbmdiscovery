@@ -4,8 +4,8 @@ process MEMECOREGRID {
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/meme:5.5.9--pl5321he99cc7f_1' :
-        'quay.io/biocontainers/meme:5.5.9--pl5321he99cc7f_1' }"
+        'community.wave.seqera.io/library/memecoregrid:3f881d057ca45014':
+        'community.wave.seqera.io/library/memecoregrid:3f881d057ca45014' }"
 
     input:
     tuple val(meta), path(break_windows_fasta)

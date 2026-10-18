@@ -4,8 +4,8 @@ process BAITGERMLINEJUNCTIONS {
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/fermi-lite:0.1--he4a0461_7':
-        'quay.io/biocontainers/fermi-lite:0.1--he4a0461_7' }"
+        'community.wave.seqera.io/library/baitgermlinejunctions:b348bbd6f96216b6':
+        'community.wave.seqera.io/library/baitgermlinejunctions:b348bbd6f96216b6' }"
 
     input:
     tuple val(meta), path(candidate_anchors), path(reads)

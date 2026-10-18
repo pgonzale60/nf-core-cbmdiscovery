@@ -36,6 +36,11 @@ class TestV3Optimizations(unittest.TestCase):
             self.assertNotIn("6fca92c6c19c5c7d", content)
             self.assertNotIn("532bebfcf48a14b5", content)
 
+        self.assertIn("649a30d5fd980e92", (REPO_ROOT / "modules/local/fishtelomericanchors/main.nf").read_text(encoding="utf-8"))
+        self.assertIn("b348bbd6f96216b6", (REPO_ROOT / "modules/local/baitgermlinejunctions/main.nf").read_text(encoding="utf-8"))
+        self.assertIn("3f881d057ca45014", (REPO_ROOT / "modules/local/memecoregrid/main.nf").read_text(encoding="utf-8"))
+        self.assertIn("422769283a7f1c87", (REPO_ROOT / "modules/local/bipartiteprofiler/main.nf").read_text(encoding="utf-8"))
+
         det_path = (
             REPO_ROOT
             / "modules"

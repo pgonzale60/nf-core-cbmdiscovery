@@ -4,8 +4,8 @@ process FISHTELOMERICANCHORS {
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container ?
-        'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/36/363cb3f920602951d1dee4e0d248eb7171b4dfd2611db3a581a480500ac25996/data':
-        'community.wave.seqera.io/library/samtools_vsearch:36d56b7ebe9ea248' }"
+        'community.wave.seqera.io/library/fishtelomericanchors:649a30d5fd980e92':
+        'community.wave.seqera.io/library/fishtelomericanchors:649a30d5fd980e92' }"
 
     input:
     tuple val(meta), path(reads)

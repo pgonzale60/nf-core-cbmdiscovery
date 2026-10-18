@@ -4,8 +4,8 @@ process BIPARTITEPROFILER {
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/meme:5.5.9--pl5321he99cc7f_1' :
-        'quay.io/biocontainers/meme:5.5.9--pl5321he99cc7f_1' }"
+        'community.wave.seqera.io/library/bipartiteprofiler:422769283a7f1c87':
+        'community.wave.seqera.io/library/bipartiteprofiler:422769283a7f1c87' }"
 
     input:
     tuple val(meta), path(break_windows_fasta), path(best_core_motif), path(census_json), path(core_metrics_json), path(best_background)
