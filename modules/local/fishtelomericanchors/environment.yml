@@ -5,4 +5,5 @@ channels:
 dependencies:
   - bioconda::bbmap>=39.08
   - bioconda::vsearch>=2.29.0
-  - python>=3.11
+  - conda-forge::pigz>=2.8
+  - conda-forge::python>=3.11
