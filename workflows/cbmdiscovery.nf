@@ -47,7 +47,6 @@ workflow CBMDISCOVERY {
         ch_samplesheet,
         params.telomere_repeat
     )
-    ch_versions = ch_versions.mix(FISHTELOMERICANCHORS.out.versions_python)
 
     //
     // STAGE 2 & 3: K-mer baiting, germline reconstruction, microhomology & junction census
@@ -61,7 +60,6 @@ workflow CBMDISCOVERY {
         params.kmer_size,
         params.min_germ_reads
     )
-    ch_versions = ch_versions.mix(BAITGERMLINEJUNCTIONS.out.versions_python)
 
     //
     // STAGE 4: Tier-1 Core motif parameter grid search
@@ -69,8 +67,6 @@ workflow CBMDISCOVERY {
     MEMECOREGRID (
         BAITGERMLINEJUNCTIONS.out.break_windows_fasta
     )
-    ch_versions = ch_versions.mix(MEMECOREGRID.out.versions_python)
-    ch_versions = ch_versions.mix(MEMECOREGRID.out.versions_meme)
 
     //
     // STAGE 5: Core-masking, Tier-2 auxiliary grid search & bipartite profiler
@@ -84,8 +80,6 @@ workflow CBMDISCOVERY {
     BIPARTITEPROFILER (
         ch_bipartite_input
     )
-    ch_versions = ch_versions.mix(BIPARTITEPROFILER.out.versions_python)
-    ch_versions = ch_versions.mix(BIPARTITEPROFILER.out.versions_meme)
 
     //
     // Collate and save software versions
@@ -156,7 +150,7 @@ workflow CBMDISCOVERY {
     bipartite_spacing_tsv = BIPARTITEPROFILER.out.bipartite_spacing_tsv
     discovery_report_md   = BIPARTITEPROFILER.out.discovery_report_md
     multiqc_report        = MULTIQC.out.report.map { _meta, report -> [report] }.toList()
-    versions              = ch_versions
+    versions              = ch_collated_versions
 }
 
 /*
