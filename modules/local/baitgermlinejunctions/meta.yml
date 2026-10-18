@@ -30,6 +30,9 @@ input:
   - - min_germ_reads:
         type: integer
         description: Minimum germline read-through reads (default: 2)
+  - - min_telo_reads:
+        type: integer
+        description: Minimum telomeric reads supporting somatic branch (default: 5)
 output:
   - break_windows_fasta:
       - meta:

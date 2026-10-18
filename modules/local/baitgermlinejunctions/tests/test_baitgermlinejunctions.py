@@ -156,6 +156,7 @@ class TestBaitGermlineJunctions(unittest.TestCase):
             {"anchor_id": "a_soft", "c_telo": 39, "c_germ": 18, "coherence": 0.78, "break_window": "TGCA" * 75},
             {"anchor_id": "a_native", "c_telo": 5, "c_germ": 0, "coherence": 0.0, "break_window": ""},
             {"anchor_id": "a_low_coh", "c_telo": 20, "c_germ": 4, "coherence": 0.45, "break_window": ""},
+            {"anchor_id": "a_unbroken", "c_telo": 0, "c_germ": 67, "coherence": 0.99, "break_window": ""},
         ]
         deduped = deduplicate_break_windows(loci)
         classified, census = deconvolve_and_census(deduped, min_germ_reads=2)
@@ -165,6 +166,7 @@ class TestBaitGermlineJunctions(unittest.TestCase):
         self.assertEqual(class_map["a_soft"], "PDE_BREAK_SITE")
         self.assertEqual(class_map["a_native"], "GERMLINE_NATIVE_TELOMERE")
         self.assertEqual(class_map["a_low_coh"], "LOW_COHERENCE_JUNCTION")
+        self.assertEqual(class_map["a_unbroken"], "UNBROKEN_GERMLINE_LOCUS")
 
         self.assertEqual(census["n_breaks"], 2)
         self.assertEqual(census["n_germ_telo"], 1)
@@ -252,6 +254,10 @@ class TestBaitGermlineJunctions(unittest.TestCase):
             fa_cand.write_text(f">anchor_1\n{soma}\n>anchor_2\n{soma}\n")
 
             r1_fq = tdp / "r1.fastq"
+            telo_reads = "\n".join([
+                f"@telo_{i}/1\n{soma[-60:] + self.repeat * 8}\n+\n{'I' * (60 + len(self.repeat) * 8)}"
+                for i in range(5)
+            ])
             dummy_reads = "\n".join([
                 f"@dummy_{i}\nAAAAACCCCCGGGGGTTTTTAAAAACCCCCGGGGGTTTTTAAAAACCCCC\n+\n" + ("I" * 50)
                 for i in range(5)
@@ -259,6 +265,7 @@ class TestBaitGermlineJunctions(unittest.TestCase):
             r1_content = (
                 f"@read_a/1\n{read_a}\n+\n{'I' * len(read_a)}\n"
                 f"@read_b/1\n{read_b}\n+\n{'I' * len(read_b)}\n"
+                f"{telo_reads}\n"
                 f"{dummy_reads}\n"
             )
             r1_fq.write_text(r1_content)
@@ -279,6 +286,7 @@ class TestBaitGermlineJunctions(unittest.TestCase):
                 "--candidate-anchors", str(fa_cand),
                 "--reads-1", str(r1_fq), "--reads-2", str(r2_fq),
                 "--platform", "illumina", "--min-germ-reads", "2",
+                "--min-telo-reads", "5",
                 "--threads", "2",
                 "--output-catalog", str(out_tsv),
                 "--output-fasta", str(out_fa),

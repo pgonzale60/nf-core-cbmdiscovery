@@ -254,6 +254,12 @@
                     "default": 2,
                     "description": "Minimum germline read-through reads required to reconstruct a germline branch.",
                     "fa_icon": "fas fa-filter"
+                },
+                "min_telo_reads": {
+                    "type": "integer",
+                    "default": 5,
+                    "description": "Minimum telomeric reads required to support somatic cleavage branch.",
+                    "fa_icon": "fas fa-shield-alt"
                 }
             }
         }

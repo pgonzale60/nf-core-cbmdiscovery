@@ -12,6 +12,7 @@ process BAITGERMLINEJUNCTIONS {
     val telomere_repeat
     val kmer_size
     val min_germ_reads
+    val min_telo_reads
 
     output:
     tuple val(meta), path("*.break_windows_300bp.fasta")            , emit: break_windows_fasta
@@ -32,7 +33,7 @@ process BAITGERMLINEJUNCTIONS {
     def r2 = is_single ? "" : "${reads[1]}"
 
     """
-    # Tool: cbm_bait_germline_junctions.py | Script-SHA: 84ae70c3e0bab7a5
+    # Tool: cbm_bait_germline_junctions.py | Script-SHA: 37dc17663a89c0cd
 
     # 1. Extract terminal 60 bp of candidate anchors into bait FASTA
     python3 -c "
@@ -100,6 +101,7 @@ with open('${candidate_anchors}') as f_in, open('anchors_terminal_60bp.fasta', '
         --telomere-repeat ${telomere_repeat} \\
         --kmer-size ${kmer_size} \\
         --min-germ-reads ${min_germ_reads} \\
+        --min-telo-reads ${min_telo_reads} \\
         --threads ${task.cpus} \\
         --output-catalog "${prefix}.junction_catalog.tsv" \\
         --output-fasta "${prefix}.break_windows_300bp.fasta" \\

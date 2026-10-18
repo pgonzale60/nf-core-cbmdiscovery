@@ -58,7 +58,8 @@ workflow CBMDISCOVERY {
         ch_bait_input,
         params.telomere_repeat,
         params.kmer_size,
-        params.min_germ_reads
+        params.min_germ_reads,
+        params.min_telo_reads
     )
 
     //

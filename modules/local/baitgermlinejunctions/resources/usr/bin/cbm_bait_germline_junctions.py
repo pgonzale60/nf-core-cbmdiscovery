@@ -64,6 +64,12 @@ def parse_args():
         help="Minimum germline read-through reads",
     )
     parser.add_argument(
+        "--min-telo-reads",
+        type=int,
+        default=5,
+        help="Minimum telomeric reads supporting somatic branch of break site",
+    )
+    parser.add_argument(
         "--min-coherence",
         type=float,
         default=0.85,
@@ -224,6 +230,7 @@ def main():
         deduped_loci,
         min_germ_reads=args.min_germ_reads,
         min_coherence=args.min_coherence,
+        min_telo_reads=args.min_telo_reads,
     )
 
     # Write junction catalog TSV

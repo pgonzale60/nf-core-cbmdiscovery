@@ -176,25 +176,48 @@ def deconvolve_and_census(
     loci: list[dict[str, Any]],
     min_germ_reads: int = 2,
     min_coherence: float = 0.85,
+    min_telo_reads: int = 5,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Classify anchors into PDE_BREAK_SITE, GERMLINE_NATIVE_TELOMERE, SHARED_NATIVE_TELOMERE,
 
-    and compute coverage and chromosome census metrics.
+    UNBROKEN_GERMLINE_LOCUS, and compute coverage and chromosome census metrics.
     """
-    # 1. First pass: identify initial PDE break sites passing germline support and coherence
+    # 1. First pass: find candidate break sites with initial dual-branch support
+    cand_breaks = []
+    for loc in loci:
+        c_germ = loc.get("c_germ", 0)
+        coherence = loc.get("coherence", 0.0)
+        c_telo = loc.get("c_telo", 0)
+        if c_telo >= min_telo_reads and c_germ >= min_germ_reads and coherence >= 0.65:
+            cand_breaks.append(loc)
+
+    if cand_breaks:
+        c_soma_vals = [l["c_telo"] for l in cand_breaks]
+        c_germ_vals = [l["c_germ"] for l in cand_breaks]
+        med_c_soma = float(statistics.median(c_soma_vals))
+        med_c_germ = float(statistics.median(c_germ_vals))
+    else:
+        med_c_soma = 0.0
+        med_c_germ = 0.0
+
+    # Adaptive telomeric bifurcation threshold based on median somatic coverage of candidate break sites
+    telo_cutoff = (
+        max(min_telo_reads, round(0.15 * med_c_soma))
+        if med_c_soma > 0
+        else min_telo_reads
+    )
+
     for loc in loci:
         c_germ = loc.get("c_germ", 0)
         coherence = loc.get("coherence", 0.0)
         c_telo = loc.get("c_telo", 0)
 
-        # High-confidence break site classification:
-        # Standard: c_germ >= min_germ_reads and coherence >= min_coherence
-        # Soft boundary: strong dual-branch support (c_telo >= 10, c_germ >= 5) with coherence >= 0.65
         is_pde = False
-        if c_germ >= min_germ_reads and coherence >= min_coherence:
-            is_pde = True
-        elif c_telo >= 10 and c_germ >= min(5, min_germ_reads) and coherence >= 0.65:
-            is_pde = True
+        if c_telo >= telo_cutoff and c_germ >= min_germ_reads:
+            if coherence >= min_coherence:
+                is_pde = True
+            elif c_germ >= min(5, min_germ_reads) and coherence >= 0.65:
+                is_pde = True
 
         if is_pde:
             loc["classification"] = "PDE_BREAK_SITE"
@@ -202,7 +225,6 @@ def deconvolve_and_census(
             loc["classification"] = "CANDIDATE_TELOMERE"
 
     pde_breaks = [l for l in loci if l["classification"] == "PDE_BREAK_SITE"]
-
     if pde_breaks:
         c_soma_vals = [l["c_telo"] for l in pde_breaks]
         c_germ_vals = [l["c_germ"] for l in pde_breaks]
@@ -217,7 +239,7 @@ def deconvolve_and_census(
         round(med_c_germ / total_cov, 4) if total_cov > 0 else 0.0
     )
 
-    # 2. Second pass: classify telomeric loci without read-through (C_germ < min_germ_reads)
+    # 2. Second pass: classify non-PDE loci
     cutoff = (
         med_c_germ * 1.5
         if med_c_germ > 0
@@ -230,8 +252,9 @@ def deconvolve_and_census(
         c_telo = loc.get("c_telo", 0)
         c_germ = loc.get("c_germ", 0)
 
-        # Native telomeres have no germline read-through; loci with read-through are low-coherence junctions
-        if c_germ >= min_germ_reads:
+        if c_telo < telo_cutoff and c_germ >= min_germ_reads:
+            loc["classification"] = "UNBROKEN_GERMLINE_LOCUS"
+        elif c_germ >= min_germ_reads:
             loc["classification"] = "LOW_COHERENCE_JUNCTION"
         elif c_telo <= cutoff:
             loc["classification"] = "GERMLINE_NATIVE_TELOMERE"
