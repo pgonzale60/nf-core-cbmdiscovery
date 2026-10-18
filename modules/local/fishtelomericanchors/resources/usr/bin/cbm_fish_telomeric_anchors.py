@@ -53,8 +53,8 @@ def parse_args():
     parser.add_argument(
         "--min-cluster-size",
         type=int,
-        default=1,
-        help="Minimum reads per anchor cluster",
+        default=None,
+        help="Minimum reads per anchor cluster (default: 3 for illumina, 1 for hifi)",
     )
     parser.add_argument(
         "--min-identity",
@@ -110,10 +110,16 @@ def main():
             if obs:
                 fished_observations.append(obs)
 
+    min_cluster = (
+        args.min_cluster_size
+        if args.min_cluster_size is not None
+        else (3 if platform == "illumina" else 1)
+    )
+
     clusters = cluster_anchors(
         fished_observations,
         min_identity=args.min_identity,
-        min_cluster_size=args.min_cluster_size,
+        min_cluster_size=min_cluster,
         threads=args.threads,
     )
 

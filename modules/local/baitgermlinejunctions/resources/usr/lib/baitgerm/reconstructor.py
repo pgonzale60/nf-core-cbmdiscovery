@@ -97,10 +97,12 @@ def reconstruct_germline_consensus(
     # Case B: Assembly via fermi-lite (fml-asm)
     if len(consensus_seq) < max_len and (anchor_seq or all_mates):
         reads_to_assemble = list(all_mates)
-        for ext in germline_extensions:
+        for ext in germline_extensions[:200]:
             r_full = (anchor_seq[-50:] if anchor_seq else "") + ext
             if r_full and r_full not in reads_to_assemble:
                 reads_to_assemble.append(r_full)
+        if len(reads_to_assemble) > 500:
+            reads_to_assemble = reads_to_assemble[:500]
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
@@ -123,21 +125,25 @@ def reconstruct_germline_consensus(
 
             unitigs: list[str] = []
             for fml_args in [
-                ["-e", "-1", "-l", "20", "-c", "1,1", "-O"],
-                ["-e", "21", "-l", "30", "-c", "2", "-t", "1"],
+                ["-e", "-1", "-l", "35", "-c", "1,1", "-O"],
+                ["-e", "21", "-l", "35", "-c", "2", "-t", "1"],
             ]:
-                res = subprocess.run(
-                    [fml_bin] + fml_args + [str(fq_path)],
-                    capture_output=True,
-                    text=True,
-                )
-                raw_out = res.stdout.strip()
-                if raw_out:
-                    u_lines = raw_out.splitlines()
-                    for i in range(1, len(u_lines), 4):
-                        unitigs.append(u_lines[i].strip().upper())
-                    if unitigs:
-                        break
+                try:
+                    res = subprocess.run(
+                        [fml_bin] + fml_args + [str(fq_path)],
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                    )
+                    raw_out = res.stdout.strip()
+                    if raw_out:
+                        u_lines = raw_out.splitlines()
+                        for i in range(1, len(u_lines), 4):
+                            unitigs.append(u_lines[i].strip().upper())
+                        if unitigs:
+                            break
+                except subprocess.TimeoutExpired:
+                    continue
 
             if anchor_seq:
                 for p_len in [50, 40, 30, 20]:

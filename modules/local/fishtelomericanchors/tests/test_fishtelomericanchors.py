@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Unit tests for fishtelomericanchors module."""
 
+import json
 import pathlib
+import subprocess
 import sys
+import tempfile
 import unittest
 
 # Ensure module lib is importable
@@ -257,6 +260,45 @@ class TestTeloAnchor(unittest.TestCase):
         elapsed = time.perf_counter() - t0
         self.assertEqual(fished, 5)
         self.assertLess(elapsed, 0.05)
+
+    def test_min_cluster_size_defaults_by_platform(self):
+        cli = (
+            pathlib.Path(__file__).parent.parent
+            / "resources"
+            / "usr"
+            / "bin"
+            / "cbm_fish_telomeric_anchors.py"
+        ).resolve()
+        with tempfile.TemporaryDirectory() as td:
+            tdp = pathlib.Path(td)
+            # Create 2 reads with identical telomeric flank (cluster size 2)
+            r_seq = self.soma_150 + ("TTAGGC" * 12)
+            fq = tdp / "reads.fq"
+            fq.write_text(f"@r1\n{r_seq}\n+\n{'I' * len(r_seq)}\n@r2\n{r_seq}\n+\n{'I' * len(r_seq)}\n")
+
+            fa_hifi = tdp / "hifi.fa"
+            json_hifi = tdp / "hifi.json"
+            subprocess.run([
+                sys.executable, str(cli),
+                "--reads-1", str(fq),
+                "--platform", "hifi",
+                "--output-fasta", str(fa_hifi),
+                "--output-summary", str(json_hifi),
+            ], check=True)
+            res_hifi = json.loads(json_hifi.read_text())
+            self.assertEqual(res_hifi["candidate_anchors_count"], 1)
+
+            fa_illumina = tdp / "illumina.fa"
+            json_illumina = tdp / "illumina.json"
+            subprocess.run([
+                sys.executable, str(cli),
+                "--reads-1", str(fq),
+                "--platform", "illumina",
+                "--output-fasta", str(fa_illumina),
+                "--output-summary", str(json_illumina),
+            ], check=True)
+            res_illumina = json.loads(json_illumina.read_text())
+            self.assertEqual(res_illumina["candidate_anchors_count"], 0)
 
 
 if __name__ == "__main__":

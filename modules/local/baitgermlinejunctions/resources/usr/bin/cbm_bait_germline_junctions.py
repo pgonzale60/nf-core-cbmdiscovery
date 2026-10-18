@@ -4,6 +4,7 @@
 import argparse
 import csv
 import json
+import multiprocessing
 from pathlib import Path
 import sys
 
@@ -92,6 +93,50 @@ def parse_args():
     return parser.parse_args()
 
 
+def _reconstruct_single_anchor(task_args: tuple) -> dict:
+    (
+        a_id,
+        a_seq,
+        c_telo,
+        c_germ,
+        germline_exts,
+        loc_reads,
+        min_germ_reads,
+        telomere_repeat,
+    ) = task_args
+
+    germ_cons = ""
+    coherence = 0.0
+    mh_len = 0
+    mh_motif = ""
+    break_window = ""
+
+    if c_germ >= min_germ_reads:
+        germ_cons, coherence = reconstruct_germline_consensus(
+            germline_exts,
+            max_len=150,
+            anchor_seq=a_seq,
+            local_reads=loc_reads,
+            threads=1,
+        )
+        mh_len, mh_motif = annotate_microhomology(
+            germ_cons, repeat=telomere_repeat
+        )
+        break_window = build_300bp_break_window(a_seq, germ_cons)
+
+    return {
+        "anchor_id": a_id,
+        "anchor_seq": a_seq,
+        "c_telo": c_telo,
+        "c_germ": c_germ,
+        "coherence": coherence,
+        "microhomology_len": mh_len,
+        "microhomology_motif": mh_motif,
+        "germline_consensus": germ_cons,
+        "break_window": break_window,
+    }
+
+
 def main():
     args = parse_args()
     if args.platform == "illumina" and not args.reads_2:
@@ -138,48 +183,36 @@ def main():
 
             if p1 and p1["branch"] == "germline":
                 germline_extensions[a_id].append(p1["germline_ext"])
-                local_reads[a_id].append(s1)
-                if s2:
-                    local_reads[a_id].append(s2)
+                if len(local_reads[a_id]) < 500:
+                    local_reads[a_id].append(s1)
+                    if s2:
+                        local_reads[a_id].append(s2)
             elif p2 and p2["branch"] == "germline":
                 germline_extensions[a_id].append(p2["germline_ext"])
-                local_reads[a_id].append(s2)
-                local_reads[a_id].append(s1)
+                if len(local_reads[a_id]) < 500:
+                    local_reads[a_id].append(s2)
+                    local_reads[a_id].append(s1)
 
-    loci = []
-    for a_id, a_seq in anchors.items():
-        c_telo = telo_counts[a_id]
-        c_germ = len(germline_extensions[a_id])
-        germ_cons = ""
-        coherence = 0.0
-        mh_len = 0
-        mh_motif = ""
-        break_window = ""
+    tasks = [
+        (
+            a_id,
+            a_seq,
+            telo_counts[a_id],
+            len(germline_extensions[a_id]),
+            germline_extensions[a_id][:500],
+            local_reads.get(a_id, []),
+            args.min_germ_reads,
+            args.telomere_repeat,
+        )
+        for a_id, a_seq in anchors.items()
+    ]
 
-        if c_germ >= args.min_germ_reads:
-            germ_cons, coherence = reconstruct_germline_consensus(
-                germline_extensions[a_id],
-                max_len=150,
-                anchor_seq=a_seq,
-                local_reads=local_reads.get(a_id, []),
-                threads=args.threads,
-            )
-            mh_len, mh_motif = annotate_microhomology(
-                germ_cons, repeat=args.telomere_repeat
-            )
-            break_window = build_300bp_break_window(a_seq, germ_cons)
-
-        loci.append({
-            "anchor_id": a_id,
-            "anchor_seq": a_seq,
-            "c_telo": c_telo,
-            "c_germ": c_germ,
-            "coherence": coherence,
-            "microhomology_len": mh_len,
-            "microhomology_motif": mh_motif,
-            "germline_consensus": germ_cons,
-            "break_window": break_window,
-        })
+    n_workers = min(max(1, args.threads), len(tasks)) if tasks else 1
+    if n_workers > 1:
+        with multiprocessing.Pool(processes=n_workers) as pool:
+            loci = pool.map(_reconstruct_single_anchor, tasks)
+    else:
+        loci = [_reconstruct_single_anchor(t) for t in tasks]
 
     # Deduplicate allelic break windows via vsearch
     deduped_loci = deduplicate_break_windows(
