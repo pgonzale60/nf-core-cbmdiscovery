@@ -1,6 +1,10 @@
-"""Clustering of somatic anchor sequences at >= 97% identity."""
+"""Clustering of somatic anchor sequences at >= 97% identity via vsearch."""
 
-from collections import Counter
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import tempfile
 from typing import Any
 
 
@@ -19,11 +23,12 @@ def cluster_anchors(
     observations: list[dict[str, Any]],
     min_identity: float = 0.97,
     min_cluster_size: int = 1,
+    threads: int = 1,
 ) -> list[dict[str, Any]]:
-    """Greedy centroid clustering of anchor sequences anchored at 3' end (pos 0).
+    """Cluster somatic anchor sequences using vsearch --cluster_fast.
 
     Returns list of clusters, each containing:
-        - anchor_id: str
+        - anchor_id: str ("anchor_1", "anchor_2", ...)
         - consensus_seq: str
         - read_count: int
         - read_ids: list[str]
@@ -32,62 +37,126 @@ def cluster_anchors(
     if not observations:
         return []
 
-    # Sort observations by sequence length descending so longest anchor serves as seed
-    sorted_obs = sorted(
-        observations, key=lambda x: len(x["anchor_seq"]), reverse=True
-    )
+    vsearch_bin = shutil.which("vsearch")
+    if not vsearch_bin:
+        raise RuntimeError("Required binary 'vsearch' not found in PATH")
 
-    clusters: list[dict[str, Any]] = []
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        raw_fasta = tmp_path / "raw_flanks.fasta"
+        cons_fasta = tmp_path / "vsearch_cons.fasta"
+        uc_file = tmp_path / "vsearch_clusters.uc"
 
-    for obs in sorted_obs:
-        seq = obs["anchor_seq"]
-        matched_cluster = None
-        for cl in clusters:
-            ident = sequence_identity_anchored_3p(cl["rep_seq"], seq)
-            if ident >= min_identity:
-                matched_cluster = cl
-                break
+        obs_by_id = {}
+        with open(raw_fasta, "w", encoding="utf-8") as f_fa:
+            for idx, obs in enumerate(observations):
+                rec_id = f"obs_{idx}"
+                obs_by_id[rec_id] = obs
+                seq = obs["anchor_seq"].upper().strip()
+                f_fa.write(f">{rec_id}\n{seq}\n")
 
-        if matched_cluster is not None:
-            matched_cluster["observations"].append(obs)
-        else:
-            clusters.append({
-                "rep_seq": seq,
-                "observations": [obs],
+        cmd = [
+            vsearch_bin,
+            "--cluster_fast",
+            str(raw_fasta),
+            "--id",
+            str(min_identity),
+            "--iddef",
+            "0",
+            "--minseqlength",
+            "1",
+            "--qmask",
+            "none",
+            "--strand",
+            "plus",
+            "--consout",
+            str(cons_fasta),
+            "--uc",
+            str(uc_file),
+            "--sizeout",
+            "--threads",
+            str(max(1, threads)),
+        ]
+
+        subprocess.run(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=True,
+        )
+
+        cluster_members: dict[int, list[dict[str, Any]]] = {}
+        centroid_to_cluster: dict[str, int] = {}
+
+        if uc_file.exists():
+            with open(uc_file, encoding="utf-8") as f_uc:
+                for line in f_uc:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    parts = line.split("\t")
+                    rec_type = parts[0]
+                    if rec_type == "S":
+                        cl_idx = int(parts[1])
+                        query_id = parts[8]
+                        cluster_members.setdefault(cl_idx, []).append(obs_by_id[query_id])
+                        centroid_to_cluster[query_id] = cl_idx
+                    elif rec_type == "H":
+                        cl_idx = int(parts[1])
+                        query_id = parts[8]
+                        cluster_members.setdefault(cl_idx, []).append(obs_by_id[query_id])
+
+        clusters: list[tuple[str, str]] = []
+        if cons_fasta.exists():
+            cur_header = None
+            cur_seq: list[str] = []
+            with open(cons_fasta, encoding="utf-8") as f_c:
+                for line in f_c:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    if line.startswith(">"):
+                        if cur_header:
+                            clusters.append((cur_header, "".join(cur_seq)))
+                        cur_header = line[1:]
+                        cur_seq = []
+                    else:
+                        cur_seq.append(line)
+                if cur_header:
+                    clusters.append((cur_header, "".join(cur_seq)))
+
+        final_clusters = []
+        for header, c_seq in clusters:
+            m_size = re.search(r"size=(\d+)", header)
+            size = int(m_size.group(1)) if m_size else 1
+            if size < min_cluster_size:
+                continue
+
+            m_cent = re.search(r"centroid=([^;]+)", header)
+            if m_cent:
+                centroid_id = m_cent.group(1)
+            else:
+                centroid_id = header.split(";")[0]
+
+            cl_idx = centroid_to_cluster.get(centroid_id)
+            if cl_idx is not None and cl_idx in cluster_members:
+                obs_list = cluster_members[cl_idx]
+            elif centroid_id in obs_by_id:
+                obs_list = [obs_by_id[centroid_id]]
+            else:
+                obs_list = []
+
+            cleaned_seq = c_seq.replace("-", "").replace(".", "").upper()
+
+            final_clusters.append({
+                "consensus_seq": cleaned_seq,
+                "read_count": len(obs_list) if obs_list else size,
+                "read_ids": [o["read_id"] for o in obs_list],
+                "observations": obs_list,
             })
 
-    # Filter by min_cluster_size and build consensus
-    final_clusters = []
-    for cl in clusters:
-        obs_list = cl["observations"]
-        if len(obs_list) < min_cluster_size:
-            continue
+        final_clusters.sort(key=lambda c: c["read_count"], reverse=True)
+        for idx, cl in enumerate(final_clusters, start=1):
+            cl["anchor_id"] = f"anchor_{idx}"
 
-        # Build 3'-anchored consensus sequence
-        max_len = max(len(o["anchor_seq"]) for o in obs_list)
-        consensus_chars = []
-        for offset_from_3p in range(max_len, 0, -1):
-            bases = []
-            for o in obs_list:
-                s = o["anchor_seq"]
-                if len(s) >= offset_from_3p:
-                    bases.append(s[-offset_from_3p])
-            if bases:
-                top_base = Counter(bases).most_common(1)[0][0]
-                consensus_chars.append(top_base)
-
-        consensus_seq = "".join(consensus_chars)
-        final_clusters.append({
-            "consensus_seq": consensus_seq,
-            "read_count": len(obs_list),
-            "read_ids": [o["read_id"] for o in obs_list],
-            "observations": obs_list,
-        })
-
-    # Sort clusters by read_count descending
-    final_clusters.sort(key=lambda c: c["read_count"], reverse=True)
-
-    for idx, cl in enumerate(final_clusters, start=1):
-        cl["anchor_id"] = f"anchor_{idx}"
-
-    return final_clusters
+        return final_clusters

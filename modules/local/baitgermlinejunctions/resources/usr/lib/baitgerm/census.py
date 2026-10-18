@@ -1,6 +1,10 @@
 """Junction classification, deduplication, and coverage/chromosome census."""
 
+from pathlib import Path
+import shutil
 import statistics
+import subprocess
+import tempfile
 from typing import Any
 
 
@@ -23,7 +27,6 @@ def are_loci_duplicates(
     germ2 = loc2.get("germline_consensus", "")
 
     if soma1 and soma2:
-        # Compare somatic anchors anchored at their 3' ends (Position 0)
         l_soma = min(len(soma1), len(soma2))
         m_soma = (
             sum(
@@ -37,7 +40,6 @@ def are_loci_duplicates(
         id_soma = m_soma / l_soma if l_soma > 0 else 0.0
 
         if germ1 and germ2:
-            # Compare germline consensus anchored at their 5' ends (Position +1)
             l_germ = min(len(germ1), len(germ2))
             m_germ = (
                 sum(
@@ -63,40 +65,111 @@ def are_loci_duplicates(
 
 
 def deduplicate_break_windows(
-    loci: list[dict[str, Any]], min_identity: float = 0.95
+    loci: list[dict[str, Any]], min_identity: float = 0.95, threads: int = 1
 ) -> list[dict[str, Any]]:
-    """Deduplicate allelic or identical break windows at >= min_identity anchored at Position 0."""
-    # Sort loci by total read support descending
+    """Deduplicate allelic or identical break windows at >= min_identity via vsearch --cluster_fast."""
+    if not loci:
+        return []
+    if len(loci) == 1:
+        return [dict(loci[0])]
+
+    vsearch_bin = shutil.which("vsearch")
+    if not vsearch_bin:
+        raise RuntimeError("Required binary 'vsearch' not found in PATH")
+
     sorted_loci = sorted(
         loci,
         key=lambda x: (x.get("c_telo", 0) + x.get("c_germ", 0)),
         reverse=True,
     )
 
-    deduped: list[dict[str, Any]] = []
-    for loc in sorted_loci:
-        duplicate = False
-        for kept in deduped:
-            if are_loci_duplicates(loc, kept, min_identity=min_identity):
-                duplicate = True
-                # Merge read counts into the kept representative
-                kept["c_telo"] = kept.get("c_telo", 0) + loc.get("c_telo", 0)
-                kept["c_germ"] = kept.get("c_germ", 0) + loc.get("c_germ", 0)
-                # Preserve the longer sequences
-                if len(loc.get("anchor_seq", "")) > len(kept.get("anchor_seq", "")):
-                    kept["anchor_seq"] = loc["anchor_seq"]
-                if len(loc.get("germline_consensus", "")) > len(
-                    kept.get("germline_consensus", "")
-                ):
-                    kept["germline_consensus"] = loc["germline_consensus"]
-                if len(loc.get("break_window", "")) > len(kept.get("break_window", "")):
-                    kept["break_window"] = loc["break_window"]
-                break
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        raw_fasta = tmp_path / "raw_windows.fasta"
+        uc_file = tmp_path / "dedup.uc"
 
-        if not duplicate:
-            deduped.append(dict(loc))
+        loci_by_id: dict[str, dict[str, Any]] = {}
+        written_count = 0
+        with open(raw_fasta, "w", encoding="utf-8") as f_fa:
+            for idx, loc in enumerate(sorted_loci):
+                lid = f"loc_{idx}"
+                loci_by_id[lid] = loc
+                w = loc.get("break_window") or loc.get("anchor_seq", "")
+                if w:
+                    f_fa.write(f">{lid}\n{w}\n")
+                    written_count += 1
 
-    return deduped
+        if written_count == 0:
+            return [dict(loc) for loc in sorted_loci]
+
+        cmd = [
+            vsearch_bin,
+            "--cluster_fast",
+            str(raw_fasta),
+            "--id",
+            str(min_identity),
+            "--iddef",
+            "0",
+            "--minseqlength",
+            "1",
+            "--qmask",
+            "none",
+            "--strand",
+            "both",
+            "--uc",
+            str(uc_file),
+            "--threads",
+            str(max(1, threads)),
+        ]
+
+        subprocess.run(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=True,
+        )
+
+        centroid_members: dict[str, list[dict[str, Any]]] = {}
+        if uc_file.exists():
+            with open(uc_file, encoding="utf-8") as f_uc:
+                for line in f_uc:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    parts = line.split("\t")
+                    rec_type = parts[0]
+                    if rec_type == "S":
+                        query_id = parts[8]
+                        centroid_members.setdefault(query_id, []).append(loci_by_id[query_id])
+                    elif rec_type == "H":
+                        query_id = parts[8]
+                        target_id = parts[9]
+                        centroid_members.setdefault(target_id, []).append(loci_by_id[query_id])
+
+        seen_loci_ids: set[int] = set()
+        deduped: list[dict[str, Any]] = []
+        for members in centroid_members.values():
+            rep = dict(members[0])
+            for m in members[1:]:
+                rep["c_telo"] = rep.get("c_telo", 0) + m.get("c_telo", 0)
+                rep["c_germ"] = rep.get("c_germ", 0) + m.get("c_germ", 0)
+                if len(m.get("anchor_seq", "")) > len(rep.get("anchor_seq", "")):
+                    rep["anchor_seq"] = m["anchor_seq"]
+                if len(m.get("germline_consensus", "")) > len(rep.get("germline_consensus", "")):
+                    rep["germline_consensus"] = m["germline_consensus"]
+                if len(m.get("break_window", "")) > len(rep.get("break_window", "")):
+                    rep["break_window"] = m["break_window"]
+            for m in members:
+                for idx, loc in enumerate(sorted_loci):
+                    if loc is m:
+                        seen_loci_ids.add(idx)
+            deduped.append(rep)
+
+        for idx, loc in enumerate(sorted_loci):
+            if idx not in seen_loci_ids:
+                deduped.append(dict(loc))
+
+        return deduped
 
 
 def deconvolve_and_census(

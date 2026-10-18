@@ -123,8 +123,13 @@ class TestTeloAnchor(unittest.TestCase):
 
     def test_clustering_and_consensus(self):
         # Create observations with small sequencing errors
-        obs1 = {
-            "read_id": "read_1",
+        obs1_a = {
+            "read_id": "read_1a",
+            "anchor_seq": self.soma_150,
+            "trimmed_prefix": "TTA",
+        }
+        obs1_b = {
+            "read_id": "read_1b",
             "anchor_seq": self.soma_150,
             "trimmed_prefix": "TTA",
         }
@@ -145,17 +150,15 @@ class TestTeloAnchor(unittest.TestCase):
         )
         self.assertGreaterEqual(ident, 0.99)
 
-        clusters = cluster_anchors([obs1, obs2], min_identity=0.97)
+        clusters = cluster_anchors([obs1_a, obs1_b, obs2], min_identity=0.97)
         self.assertEqual(len(clusters), 1)
-        self.assertEqual(clusters[0]["read_count"], 2)
+        self.assertEqual(clusters[0]["read_count"], 3)
         self.assertEqual(clusters[0]["consensus_seq"], self.soma_150)
 
     def test_continuous_phase_microhomology_trimming(self):
-        # soma_150 ending in GCTT (shares 2 bp 'TT' microhomology with TTAGGC)
-        soma = self.soma_150[:-4] + "GCTT"
-        # Telomerase adds in-phase: AGGC + TTAGGC * 10
-        telomerase_addition = "AGGC" + ("TTAGGC" * 10)
-        full_read = soma + telomerase_addition + "A" * 10
+        # Flank ending in CG + 'TT' prefix + 10 repeats
+        soma = self.soma_150[:-4] + "CG"
+        full_read = soma + "TT" + ("TTAGGC" * 10) + "A" * 10
 
         tract = find_terminal_telomeric_tract(
             full_read, repeat=self.repeat, platform="hifi"
@@ -165,8 +168,8 @@ class TestTeloAnchor(unittest.TestCase):
             full_read, tract, repeat=self.repeat, max_flank_len=150
         )
         self.assertIsNotNone(trimmed)
-        # Position 0 must be trimmed back to 'GC', excluding 'TT'
-        self.assertEqual(trimmed["anchor_seq"], soma[:-2])
+        # Position 0 must be trimmed back to 'CG', excluding 'TT'
+        self.assertEqual(trimmed["anchor_seq"], soma)
         self.assertEqual(trimmed["microhomology_trimmed_len"], 2)
 
     def test_inward_pointing_telomere_rejected(self):
@@ -195,8 +198,8 @@ class TestTeloAnchor(unittest.TestCase):
 
     def test_phase_trimming_across_arbitrary_somatic_endings(self):
         soma_base = self.soma_150[:100]
-        # Case A: soma_base + "AA" + "TT" (2-bp microhomology) + "AGGC" + ("TTAGGC" * 10)
-        read_a = soma_base + "AA" + "TT" + "AGGC" + (self.repeat * 10)
+        # Case A: soma_base + "AA" + "TT" (2-bp prefix) + ("TTAGGC" * 10)
+        read_a = soma_base + "AA" + "TT" + (self.repeat * 10)
         tract_a = find_terminal_telomeric_tract(
             read_a, repeat=self.repeat, platform="hifi"
         )
@@ -209,8 +212,8 @@ class TestTeloAnchor(unittest.TestCase):
         self.assertEqual(len(trimmed_a["anchor_seq"]), len(soma_base) + 2)
         self.assertEqual(trimmed_a["microhomology_trimmed_len"], 2)
 
-        # Case B: soma_base + "CC" + "TTAG" (4-bp microhomology) + "GC" + ("TTAGGC" * 10)
-        read_b = soma_base + "CC" + "TTAG" + "GC" + (self.repeat * 10)
+        # Case B: soma_base + "CC" + "TTAG" (4-bp prefix) + ("TTAGGC" * 10)
+        read_b = soma_base + "CC" + "TTAG" + (self.repeat * 10)
         tract_b = find_terminal_telomeric_tract(
             read_b, repeat=self.repeat, platform="hifi"
         )

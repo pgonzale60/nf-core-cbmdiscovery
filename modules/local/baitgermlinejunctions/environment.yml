@@ -3,5 +3,7 @@ channels:
   - conda-forge
   - bioconda
 dependencies:
-  - bioconda::kmc=3.2.4
-  - python>=3.10
+  - bioconda::bbmap>=39.08
+  - bioconda::fermi-lite>=0.1
+  - bioconda::vsearch>=2.29.0
+  - python>=3.11

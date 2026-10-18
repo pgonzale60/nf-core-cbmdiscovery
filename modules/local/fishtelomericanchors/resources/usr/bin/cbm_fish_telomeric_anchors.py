@@ -56,6 +56,12 @@ def parse_args():
         default=1,
         help="Minimum reads per anchor cluster",
     )
+    parser.add_argument(
+        "--threads",
+        type=int,
+        default=1,
+        help="Number of threads for clustering",
+    )
     return parser.parse_args()
 
 
@@ -102,6 +108,7 @@ def main():
         fished_observations,
         min_identity=0.97,
         min_cluster_size=args.min_cluster_size,
+        threads=args.threads,
     )
 
     # Write candidate anchors FASTA

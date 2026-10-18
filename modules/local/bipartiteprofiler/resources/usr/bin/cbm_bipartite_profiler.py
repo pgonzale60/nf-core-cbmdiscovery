@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""Stage 5: Core-Masking, Tier-2 Auxiliary Grid Search & Bipartite Profiler."""
+"""Stage 5: Soft-Erasure Multi-Motif Discovery, SpaMo Spacing Validation & Bipartite Profiler."""
 
 import argparse
 from collections import defaultdict
+import os
 from pathlib import Path
+import re
 import shutil
+import subprocess
 import sys
+from typing import Any
 
 # Ensure usr/lib is in python search path
 _LIB_DIR = Path(__file__).resolve().parent.parent / "lib"
@@ -27,7 +31,7 @@ from bipartite.spacing import (  # noqa: E402
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Mask core motif, run auxiliary MEME grid search, profile bipartite spacing, and generate final report"
+        description="Soft-erasure multi-motif discovery, SpaMo spacing validation, and bipartite profiler"
     )
     parser.add_argument(
         "--break-windows",
@@ -46,6 +50,11 @@ def parse_args():
         "--core-metrics-json",
         required=True,
         help="Path to core_motif_metrics.json",
+    )
+    parser.add_argument(
+        "--background-bfile",
+        default=None,
+        help="Path to winning Markov background from Stage 4",
     )
     parser.add_argument("--sample-id", default="sample", help="Sample ID")
     parser.add_argument(
@@ -69,17 +78,155 @@ def parse_args():
         help="Output core-masked FASTA",
     )
     parser.add_argument(
-        "--threads", type=int, default=1, help="Threads for MEME/FIMO"
+        "--threads", type=int, default=1, help="Threads for MEME/FIMO/SpaMo"
     )
     return parser.parse_args()
 
 
+def build_higher_order_markov_bg(fasta_file: str | Path, out_bg: Path) -> Path:
+    """Build higher-order Markov background from distal flanking arms [-150..-60] & [+60..+150]."""
+    fgm_bin = shutil.which("fasta-get-markov")
+    if not fgm_bin:
+        raise RuntimeError("Required binary 'fasta-get-markov' not found in PATH")
+
+    seqs = load_fasta_dict(fasta_file)
+    distal_fa = out_bg.parent / "distal_arms_bg.fasta"
+
+    total_len = 0
+    with open(distal_fa, "w", encoding="utf-8") as f_out:
+        for idx, (_hdr, s) in enumerate(seqs.items()):
+            s = s.upper()
+            left_arm = s[:90] if len(s) >= 90 else s
+            right_arm = s[210:] if len(s) >= 210 else ""
+            if left_arm:
+                f_out.write(f">distal_L_{idx}\n{left_arm}\n")
+                total_len += len(left_arm)
+            if right_arm:
+                f_out.write(f">distal_R_{idx}\n{right_arm}\n")
+                total_len += len(right_arm)
+
+    order = 3 if total_len >= 3600 else (2 if total_len >= 1440 else 1)
+    subprocess.run(
+        [fgm_bin, "-dna", "-m", str(order), str(distal_fa), str(out_bg)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=True,
+    )
+    return out_bg
+
+
+def extract_motif2_from_meme(
+    meme_txt_path: Path, output_aux_meme: Path
+) -> dict[str, Any] | None:
+    """Extract secondary motif (Motif 2) from multi-motif MEME text output."""
+    if not meme_txt_path.exists():
+        return None
+    text = meme_txt_path.read_text(encoding="utf-8")
+    # Search for MOTIF 2 or Motif 2
+    m_split = re.split(r"\n(?=MOTIF\s+2|\bMEME-2\b)", text)
+    if len(m_split) < 2:
+        return None
+
+    motif2_section = m_split[1]
+    # Header up to first MOTIF
+    header = text.split("MOTIF")[0].strip() + "\n\n"
+    # End of motif 2 section (before MOTIF 3 if present)
+    m3_split = re.split(r"\n(?=MOTIF\s+3|\bMEME-3\b)", motif2_section)
+    motif2_content = m3_split[0]
+
+    output_aux_meme.write_text(header + motif2_content, encoding="utf-8")
+
+    # Extract metrics
+    m_e = re.search(r"E=\s*(\S+)", motif2_content)
+    evalue = float(m_e.group(1)) if m_e else 1.0
+
+    m_w = re.search(r"w=\s*(\d+)", motif2_content)
+    width = int(m_w.group(1)) if m_w else 8
+
+    m_nsites = re.search(r"nsites=\s*(\d+)", motif2_content)
+    nsites = int(m_nsites.group(1)) if m_nsites else 0
+
+    cons_m = re.search(r"Multilevel\s+([A-Za-z]+)", motif2_content)
+    consensus = cons_m.group(1).upper() if cons_m else ""
+
+    return {
+        "id": "MEME_soft_erasure_motif_2",
+        "consensus": consensus,
+        "width": width,
+        "nsites": nsites,
+        "evalue": evalue,
+        "meme_txt_path": str(output_aux_meme),
+    }
+
+
 def main():
     args = parse_args()
+    # Check all required binaries fail loudly
+    for b in ["meme", "fasta-get-markov", "fimo", "spamo"]:
+        if not shutil.which(b):
+            raise RuntimeError(f"Required binary '{b}' not found in PATH")
+
     raw_seqs = load_fasta_dict(args.break_windows)
     seq_names = list(raw_seqs.keys())
 
-    # 1. Mask core motifs with N
+    work_dir = Path("bipartite_work")
+    work_dir.mkdir(exist_ok=True)
+
+    # 1. Higher-order Markov background
+    if args.background_bfile and os.path.exists(args.background_bfile):
+        bg_file = Path(args.background_bfile)
+    else:
+        bg_file = build_higher_order_markov_bg(
+            args.break_windows, work_dir / "bg_bipartite.txt"
+        )
+
+    # 2. Native Multi-Motif Soft-Erasure Discovery (MEME -nmotifs 3)
+    meme_out_dir = work_dir / "meme_soft_erasure_out"
+    subprocess.run(
+        [
+            "meme",
+            args.break_windows,
+            "-dna",
+            "-mod",
+            "zoops",
+            "-nmotifs",
+            "3",
+            "-minw",
+            "6",
+            "-maxw",
+            "25",
+            "-revcomp",
+            "-bfile",
+            str(bg_file),
+            "-oc",
+            str(meme_out_dir),
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=True,
+    )
+
+    # 3. Spatial Spacing Validation via SpaMo
+    meme_xml = meme_out_dir / "meme.xml"
+    spamo_out_dir = work_dir / "spamo_out"
+    if meme_xml.exists():
+        subprocess.run(
+            [
+                "spamo",
+                "-oc",
+                str(spamo_out_dir),
+                "-range",
+                "100",
+                args.break_windows,
+                str(meme_xml),
+                str(meme_xml),
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=True,
+        )
+
+    # 4. Mask core motifs with N and run masked grid as complementary auxiliary search
     _masked_seqs, core_hits = mask_core_motifs(
         core_meme=args.core_meme,
         fasta_file=args.break_windows,
@@ -92,17 +239,34 @@ def main():
     for h in core_hits:
         core_hits_by_seq[h["seq_name"]].append(h)
 
-    # 2. Auxiliary motif grid search
-    best_aux, _grid_results = run_auxiliary_grid(
+    best_aux_grid, _grid_results = run_auxiliary_grid(
         masked_fasta=args.output_masked_fasta,
         out_dir="aux_grid_runs",
+        bfile=str(bg_file),
         threads=args.threads,
     )
 
-    aux_hits_by_seq = defaultdict(list)
-    if best_aux and best_aux.get("meme_txt_path"):
+    # Compare soft-erasure Motif 2 vs masked-grid auxiliary motif
+    soft_motif2 = extract_motif2_from_meme(
+        meme_out_dir / "meme.txt", work_dir / "soft_motif2.meme"
+    )
+
+    best_aux = None
+    if soft_motif2 and (
+        not best_aux_grid or soft_motif2["evalue"] <= best_aux_grid["evalue"]
+    ):
+        best_aux = soft_motif2
+        shutil.copy(work_dir / "soft_motif2.meme", args.output_aux_meme)
+    elif best_aux_grid and best_aux_grid.get("meme_txt_path"):
+        best_aux = best_aux_grid
         shutil.copy(best_aux["meme_txt_path"], args.output_aux_meme)
-        # Run FIMO with auxiliary motif
+    else:
+        with open(args.output_aux_meme, "w", encoding="utf-8") as f:
+            f.write("MEME version 4\n\nALPHABET= ACGT\n")
+
+    # 5. Profile bipartite spacing
+    aux_hits_by_seq = defaultdict(list)
+    if best_aux and os.path.exists(args.output_aux_meme):
         aux_fimo_hits = run_fimo(
             meme_file=args.output_aux_meme,
             fasta_file=args.break_windows,
@@ -111,12 +275,7 @@ def main():
         )
         for h in aux_fimo_hits:
             aux_hits_by_seq[h["seq_name"]].append(h)
-    else:
-        # Create empty placeholder if no auxiliary motif detected
-        with open(args.output_aux_meme, "w", encoding="utf-8") as f:
-            f.write("MEME version 4\n\nALPHABET= ACGT\n")
 
-    # 3. Profile bipartite spacing and cleavage offsets
     spacing_rows, spacing_summary = profile_bipartite_spacing(
         seq_names=seq_names,
         core_hits_by_seq=core_hits_by_seq,
@@ -125,7 +284,7 @@ def main():
     )
     write_spacing_tsv(spacing_rows, args.output_spacing_tsv)
 
-    # 4. Generate CBM Discovery Markdown Report
+    # 6. Generate CBM Discovery Markdown Report
     generate_cbm_discovery_report(
         sample_id=args.sample_id,
         census_json_path=args.census_json,

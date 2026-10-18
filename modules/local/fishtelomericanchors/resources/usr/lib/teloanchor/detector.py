@@ -57,7 +57,6 @@ def find_terminal_telomeric_tract(
         eff_min_flank = 50 if min_flank_bp is None else min_flank_bp
 
     read_len = len(seq)
-    prefixes = [repeat[:k] for k in range(rep_len - 1, 0, -1)]
 
     # 1. 3p fwd search (canonical repeat only; rejects inward 3p rev)
     hits_fwd: list[tuple[int, int]] = []
@@ -84,24 +83,6 @@ def find_terminal_telomeric_tract(
                     t_start -= 1
                 while r_stop < read_len and seq[r_stop] == seq[r_stop - rep_len]:
                     r_stop += 1
-
-                # If flank before r_start does not end in a prefix of repeat,
-                # check if the microhomology prefix was absorbed into the first unit at r_start
-                if not any(seq[:r_start].endswith(p) for p in prefixes):
-                    if seq[:r_start].endswith("AA"):
-                        t_start = r_start + 2
-                    elif seq[:r_start].endswith("CC"):
-                        t_start = r_start + 4
-                    elif seq[:r_start].endswith("GC"):
-                        t_start = r_start + 2
-                    else:
-                        for m in range(rep_len - 1, 0, -1):
-                            if seq[:r_start].endswith(repeat[-m:]):
-                                k = m
-                                pos = r_start + k
-                                if seq[r_start:pos] == repeat[:k]:
-                                    t_start = pos
-                                    break
 
                 flank = seq[:t_start]
                 if len(flank) >= eff_min_flank:
@@ -132,7 +113,6 @@ def find_terminal_telomeric_tract(
                 c_start, c_stop = s, e
         runs_rev.append((c_start, c_stop))
 
-        rc_prefixes = [revcomp(p) for p in prefixes]
         for r_start, r_stop in runs_rev:
             if r_start <= eff_tip_tol and (r_stop - r_start) >= (eff_min_repeats - 1) * rep_len:
                 while r_start > 0 and seq[r_start - 1] == seq[r_start + rep_len - 1]:

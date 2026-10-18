@@ -216,6 +216,7 @@ def _run_single_aux_condition(
     cond: dict[str, Any],
     masked_fa_str: str,
     cond_dir_str: str,
+    bfile: str | None = None,
 ) -> dict[str, Any] | None:
     """Run MEME for a single auxiliary condition and parse metrics."""
     cond_dir = Path(cond_dir_str)
@@ -236,6 +237,8 @@ def _run_single_aux_condition(
             "-oc",
             cond_dir_str,
         ] + cond["w_args"]
+        if bfile and os.path.exists(bfile):
+            cmd.extend(["-bfile", str(bfile)])
         if cond["revcomp"]:
             cmd.append("-revcomp")
         subprocess.run(
@@ -258,6 +261,7 @@ def _run_single_aux_condition(
 def run_auxiliary_grid(
     masked_fasta: str | Path,
     out_dir: str | Path,
+    bfile: str | None = None,
     threads: int = 1,
 ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
     """Execute auxiliary grid search across 16 conditions on core-masked FASTA."""
@@ -272,14 +276,14 @@ def run_auxiliary_grid(
         cid = cond["id"]
         cond_dir = out_path / cid
         cond_dir.mkdir(exist_ok=True)
-        tasks.append((cond, str(masked_fasta), str(cond_dir)))
+        tasks.append((cond, str(masked_fasta), str(cond_dir), bfile))
 
     results = []
     max_workers = max(1, threads)
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         futures = [
-            executor.submit(_run_single_aux_condition, meme_bin, cond, m_fa, c_dir)
-            for cond, m_fa, c_dir in tasks
+            executor.submit(_run_single_aux_condition, meme_bin, cond, m_fa, c_dir, bf)
+            for cond, m_fa, c_dir, bf in tasks
         ]
         for f in as_completed(futures):
             res = f.result()

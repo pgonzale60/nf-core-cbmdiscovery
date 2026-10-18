@@ -3,7 +3,9 @@ process BAITGERMLINEJUNCTIONS {
     label 'process_high'
 
     conda "${moduleDir}/environment.yml"
-    container 'community.wave.seqera.io/library/kmc_python:d875681ce2658826'
+    container "${ workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container ?
+        'https://community.wave.seqera.io/library/bbmap_fermi-lite_vsearch:532bebfcf48a14b5':
+        'community.wave.seqera.io/library/bbmap_fermi-lite_vsearch:532bebfcf48a14b5' }"
 
     input:
     tuple val(meta), path(candidate_anchors), path(reads)
@@ -15,6 +17,7 @@ process BAITGERMLINEJUNCTIONS {
     tuple val(meta), path("*.break_windows_300bp.fasta")            , emit: break_windows_fasta
     tuple val(meta), path("*.junction_catalog.tsv")                 , emit: junction_catalog
     tuple val(meta), path("*.coverage_and_chromosome_census.json")  , emit: census_json
+    tuple val(meta), path("*.pass2_baited_reads.fastq.gz")          , emit: baited_reads_fastq
     tuple val("${task.process}"), val('python'), eval("python3 --version | sed 's/Python //'"), topic: versions, emit: versions_python
 
     when:
@@ -27,11 +30,9 @@ process BAITGERMLINEJUNCTIONS {
     def is_single = meta.single_end
     def r1 = is_single ? "${reads}" : "${reads[0]}"
     def r2 = is_single ? "" : "${reads[1]}"
-    def mem_gb = task.memory ? task.memory.toGiga() : 4
-    def bait_k = Math.min((kmer_size as int), 20)
 
     """
-    # Tool: cbm_bait_germline_junctions.py | Script-SHA: 99a5f0fbbfbff0dd
+    # Tool: cbm_bait_germline_junctions.py | Script-SHA: 675571978c85698f
 
     # 1. Extract terminal 60 bp of candidate anchors into bait FASTA
     python3 -c "
@@ -54,15 +55,41 @@ with open('${candidate_anchors}') as f_in, open('anchors_terminal_60bp.fasta', '
         f_out.write(f'>{cur_id}\\n{s[-60:]}\\n')
 "
 
-    # 2. High-speed multi-threaded C++ k-mer baiting via KMC unconditionally
-    mkdir -p kmc_tmp
-    kmc -k${bait_k} -m${mem_gb} -t${task.cpus} -ci1 -fa anchors_terminal_60bp.fasta anchors_kmc kmc_tmp
-    kmc_tools filter -t${task.cpus} anchors_kmc -ci1 "${r1}" -fq "baited_reads_1.fastq"
-    if [ -n "${r2}" ]; then
-        kmc_tools filter -t${task.cpus} anchors_kmc -ci1 "${r2}" -fq "baited_reads_2.fastq"
-        READS_ARGS="--reads-1 baited_reads_1.fastq --reads-2 baited_reads_2.fastq"
+    # 2. Mate-synchronized read baiting using bbduk.sh
+    if [ "${is_single}" = "true" ]; then
+        bbduk.sh \\
+            in=${r1} \\
+            ref=anchors_terminal_60bp.fasta \\
+            outm=baited_R1.fastq \\
+            k=27 \\
+            hdist=1 \\
+            rcomp=t \\
+            minkmerhits=1 \\
+            entropy=0.5 \\
+            entropywindow=50 \\
+            threads=${task.cpus} \\
+            overwrite=true
+
+        gzip -c baited_R1.fastq > ${prefix}.pass2_baited_reads.fastq.gz
+        READS_ARGS="--reads-1 baited_R1.fastq"
     else
-        READS_ARGS="--reads-1 baited_reads_1.fastq"
+        bbduk.sh \\
+            in1=${r1} \\
+            in2=${r2} \\
+            ref=anchors_terminal_60bp.fasta \\
+            outm1=baited_R1.fastq \\
+            outm2=baited_R2.fastq \\
+            k=27 \\
+            hdist=1 \\
+            rcomp=t \\
+            minkmerhits=1 \\
+            entropy=0.5 \\
+            entropywindow=50 \\
+            threads=${task.cpus} \\
+            overwrite=true
+
+        cat baited_R1.fastq baited_R2.fastq | gzip -c > ${prefix}.pass2_baited_reads.fastq.gz
+        READS_ARGS="--reads-1 baited_R1.fastq --reads-2 baited_R2.fastq"
     fi
 
     # 3. Exact bifurcation partitioning, microhomology annotation, and junction census
@@ -73,6 +100,7 @@ with open('${candidate_anchors}') as f_in, open('anchors_terminal_60bp.fasta', '
         --telomere-repeat ${telomere_repeat} \\
         --kmer-size ${kmer_size} \\
         --min-germ-reads ${min_germ_reads} \\
+        --threads ${task.cpus} \\
         --output-catalog "${prefix}.junction_catalog.tsv" \\
         --output-fasta "${prefix}.break_windows_300bp.fasta" \\
         --output-census "${prefix}.coverage_and_chromosome_census.json" \\
@@ -84,6 +112,7 @@ with open('${candidate_anchors}') as f_in, open('anchors_terminal_60bp.fasta', '
     """
     touch "${prefix}.break_windows_300bp.fasta"
     touch "${prefix}.junction_catalog.tsv"
+    touch "${prefix}.pass2_baited_reads.fastq.gz"
     echo '{"n_breaks": 0, "n_germ_telo": 0}' > "${prefix}.coverage_and_chromosome_census.json"
     """
 }

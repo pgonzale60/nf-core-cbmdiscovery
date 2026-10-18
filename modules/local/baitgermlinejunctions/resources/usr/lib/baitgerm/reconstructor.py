@@ -1,6 +1,10 @@
 """Reconstruction of germline consensus, coherence scoring, and microhomology annotation."""
 
 from collections import Counter
+from pathlib import Path
+import shutil
+import subprocess
+import tempfile
 
 
 def get_cyclic_prefixes(repeat: str) -> list[str]:
@@ -20,41 +24,175 @@ def revcomp(seq: str) -> str:
 def reconstruct_germline_consensus(
     germline_extensions: list[str],
     max_len: int = 150,
+    anchor_seq: str = "",
+    local_reads: list[str] | None = None,
     mate_reads: list[str] | None = None,
+    threads: int = 1,
 ) -> tuple[str, float]:
-    """Build majority-vote germline consensus from +1 to +max_len and calculate coherence.
+    """Reconstruct [+1 .. +max_len] germline consensus via vsearch (Case A) or fermi-lite (Case B).
 
-    Optionally extends consensus up to max_len using mate_reads.
-    Returns (consensus_seq, coherence_fraction).
+    Returns (consensus_seq, branch_coherence).
     """
     if not germline_extensions:
         return "", 0.0
 
-    consensus_chars = []
-    # Build consensus position by position
-    for pos in range(max_len):
-        bases = [
-            ext[pos] for ext in germline_extensions if len(ext) > pos
-        ]
-        if not bases:
-            break
-        top_base = Counter(bases).most_common(1)[0][0]
-        consensus_chars.append(top_base)
+    vsearch_bin = shutil.which("vsearch")
+    fml_bin = shutil.which("fml-asm")
+    if not vsearch_bin:
+        raise RuntimeError("Required binary 'vsearch' not found in PATH")
+    if not fml_bin:
+        raise RuntimeError("Required binary 'fml-asm' not found in PATH")
 
-    consensus_seq = "".join(consensus_chars)
+    all_mates = list(local_reads or []) + list(mate_reads or [])
+    consensus_seq = ""
+
+    # Case A: Direct Full-Length Overhangs (>= 2 extensions with length >= max_len)
+    long_exts = [e for e in germline_extensions if len(e) >= max_len]
+    if len(long_exts) >= 2:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            fa_path = tmp_path / "long_exts.fa"
+            cons_path = tmp_path / "cons.fa"
+            with open(fa_path, "w", encoding="utf-8") as f_fa:
+                for idx, ext in enumerate(long_exts):
+                    f_fa.write(f">ext_{idx}\n{ext[:max_len]}\n")
+
+            cmd = [
+                vsearch_bin,
+                "--cluster_fast",
+                str(fa_path),
+                "--id",
+                "0.95",
+                "--iddef",
+                "0",
+                "--minseqlength",
+                "1",
+                "--qmask",
+                "none",
+                "--strand",
+                "plus",
+                "--consout",
+                str(cons_path),
+                "--sizeout",
+                "--threads",
+                str(max(1, threads)),
+            ]
+            subprocess.run(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=True,
+            )
+            if cons_path.exists():
+                lines = [
+                    line.strip()
+                    for line in cons_path.read_text(encoding="utf-8").splitlines()
+                    if line.strip() and not line.startswith(">")
+                ]
+                if lines:
+                    c = "".join(lines).replace("-", "").replace(".", "").upper()
+                    if len(c) >= max_len:
+                        consensus_seq = c[:max_len]
+
+    # Case B: Assembly via fermi-lite (fml-asm)
+    if len(consensus_seq) < max_len and (anchor_seq or all_mates):
+        reads_to_assemble = list(all_mates)
+        for ext in germline_extensions:
+            r_full = (anchor_seq[-50:] if anchor_seq else "") + ext
+            if r_full and r_full not in reads_to_assemble:
+                reads_to_assemble.append(r_full)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            fq_path = tmp_path / "local_pool.fastq"
+            with open(fq_path, "w", encoding="utf-8") as f_fq:
+                if anchor_seq:
+                    a_seed = (
+                        anchor_seq[-150:]
+                        if len(anchor_seq) >= 150
+                        else anchor_seq
+                    )
+                    f_fq.write(
+                        f"@anchor_seed\n{a_seed}\n+\n{'I' * len(a_seed)}\n"
+                    )
+                for r_idx, r_seq in enumerate(reads_to_assemble):
+                    f_fq.write(
+                        f"@read_{r_idx}\n{r_seq}\n+\n{'I' * len(r_seq)}\n"
+                    )
+
+            unitigs: list[str] = []
+            for fml_args in [
+                ["-e", "21", "-l", "30", "-c", "2", "-t", "1"],
+                ["-e", "-1", "-l", "25", "-c", "1,1", "-O"],
+            ]:
+                res = subprocess.run(
+                    [fml_bin] + fml_args + [str(fq_path)],
+                    capture_output=True,
+                    text=True,
+                )
+                raw_out = res.stdout.strip()
+                if raw_out:
+                    u_lines = raw_out.splitlines()
+                    for i in range(1, len(u_lines), 4):
+                        unitigs.append(u_lines[i].strip().upper())
+                    if unitigs:
+                        break
+
+            if anchor_seq:
+                for p_len in [40, 30, 20]:
+                    if len(anchor_seq) < p_len:
+                        continue
+                    probe = anchor_seq[-p_len:].upper()
+                    for utg in unitigs:
+                        idx = utg.find(probe)
+                        if idx >= 0:
+                            after = utg[idx + p_len :]
+                            if len(after) > len(consensus_seq):
+                                consensus_seq = after[:max_len]
+                        rc_utg = revcomp(utg)
+                        idx_rc = rc_utg.find(probe)
+                        if idx_rc >= 0:
+                            after = rc_utg[idx_rc + p_len :]
+                            if len(after) > len(consensus_seq):
+                                consensus_seq = after[:max_len]
+                    if len(consensus_seq) >= max_len:
+                        break
+            elif unitigs:
+                # Without anchor_seq, pick unitig matching germline extension prefix
+                ext0 = germline_extensions[0][: min(20, len(germline_extensions[0]))]
+                for utg in unitigs:
+                    if ext0 in utg:
+                        idx = utg.find(ext0)
+                        sub = utg[idx : idx + max_len]
+                        if len(sub) > len(consensus_seq):
+                            consensus_seq = sub
+                    elif ext0 in revcomp(utg):
+                        rc_utg = revcomp(utg)
+                        idx = rc_utg.find(ext0)
+                        sub = rc_utg[idx : idx + max_len]
+                        if len(sub) > len(consensus_seq):
+                            consensus_seq = sub
+
+    # Fallback to column-wise consensus if needed
     if not consensus_seq:
-        return "", 0.0
+        chars = []
+        for pos in range(max_len):
+            bases = [ext[pos] for ext in germline_extensions if len(ext) > pos]
+            if not bases:
+                break
+            top_base = Counter(bases).most_common(1)[0][0]
+            chars.append(top_base)
+        consensus_seq = "".join(chars)
 
-    # Mate extension if requested and consensus is shorter than max_len
-    if mate_reads and len(consensus_seq) < max_len:
+    # Mate extension if consensus is still shorter than max_len
+    if all_mates and len(consensus_seq) < max_len:
         extended = True
         used_mates: set[int] = set()
         while extended and len(consensus_seq) < max_len:
             extended = False
-            for m_idx, mate in enumerate(mate_reads):
+            for m_idx, mate in enumerate(all_mates):
                 if m_idx in used_mates:
                     continue
-                # Try forward and reverse-complement of mate
                 matched = False
                 for m in (mate, revcomp(mate)):
                     for k in (25, 20):
@@ -77,7 +215,10 @@ def reconstruct_germline_consensus(
                 if extended:
                     break
 
-    # Calculate Branch Coherence: fraction of aligned bases agreeing with consensus
+    if not consensus_seq:
+        return "", 0.0
+
+    # Calculate Branch Coherence against consensus_seq
     total_aligned = 0
     total_matching = 0
     cons_len = len(consensus_seq)
@@ -90,7 +231,7 @@ def reconstruct_germline_consensus(
                 total_matching += 1
 
     coherence = total_matching / total_aligned if total_aligned > 0 else 0.0
-    return consensus_seq, round(coherence, 4)
+    return consensus_seq[:max_len], round(coherence, 4)
 
 
 def annotate_microhomology(

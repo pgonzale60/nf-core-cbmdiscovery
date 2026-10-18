@@ -44,6 +44,11 @@ def parse_args():
         help="Output JSON of best core motif metrics",
     )
     parser.add_argument(
+        "--output-background",
+        default="best_background.bfile",
+        help="Output winning Markov background file",
+    )
+    parser.add_argument(
         "--threads", type=int, default=1, help="Threads for MEME"
     )
     return parser.parse_args()
@@ -63,6 +68,7 @@ def main():
         output_meme=args.output_meme,
         summary_tsv=args.output_tsv,
         metrics_json=args.output_metrics,
+        output_background=args.output_background,
     )
 
     if best_motif:

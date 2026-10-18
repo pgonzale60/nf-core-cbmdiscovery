@@ -79,6 +79,7 @@ workflow CBMDISCOVERY {
         .join(MEMECOREGRID.out.best_core_motif)
         .join(BAITGERMLINEJUNCTIONS.out.census_json)
         .join(MEMECOREGRID.out.motif_metrics_json)
+        .join(MEMECOREGRID.out.best_background)
 
     BIPARTITEPROFILER (
         ch_bipartite_input

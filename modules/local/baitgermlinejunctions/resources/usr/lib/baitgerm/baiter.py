@@ -99,7 +99,7 @@ def bait_reads(
         return hits
 
     files = [fastq_1]
-    if fastq_2:
+    if fastq_2 and os.path.exists(fastq_2):
         files.append(fastq_2)
 
     for fq in files:

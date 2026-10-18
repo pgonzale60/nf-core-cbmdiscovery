@@ -84,6 +84,12 @@ def parse_args():
         default="coverage_and_chromosome_census.json",
         help="Output census JSON",
     )
+    parser.add_argument(
+        "--threads",
+        type=int,
+        default=1,
+        help="Number of threads for reconstruction and deduplication",
+    )
     return parser.parse_args()
 
 
@@ -96,25 +102,26 @@ def main():
     bait_k = min(args.kmer_size, 20)
     bait_index = build_kmer_bait_index(anchors, kmer_size=bait_k)
 
-    # Track extensions and counts per anchor
+    # Track extensions, local reads, and counts per anchor
     telo_counts = {a_id: 0 for a_id in anchors}
     germline_extensions = {a_id: [] for a_id in anchors}
+    local_reads: dict[str, list[str]] = {a_id: [] for a_id in anchors}
 
     for hit in bait_reads(
         args.reads_1, args.reads_2, bait_index, kmer_size=bait_k
     ):
         a_id = hit["anchor_id"]
         a_seq = anchors[a_id]
+        s = hit["seq"]
         p_res = partition_baited_read(
-            a_seq, hit["seq"], repeat=args.telomere_repeat
+            a_seq, s, repeat=args.telomere_repeat
         )
-        if not p_res:
-            continue
-        if p_res["branch"] == "telo":
-            telo_counts[a_id] += 1
-        elif p_res["branch"] == "germline":
-            germline_extensions[a_id].append(p_res["germline_ext"])
-
+        if p_res:
+            if p_res["branch"] == "telo":
+                telo_counts[a_id] += 1
+            elif p_res["branch"] == "germline":
+                germline_extensions[a_id].append(p_res["germline_ext"])
+                local_reads[a_id].append(s)
     fastq_files = [args.reads_1]
     if args.reads_2:
         fastq_files.append(args.reads_2)
@@ -133,10 +140,14 @@ def main():
         break_window = ""
 
         if c_germ >= args.min_germ_reads:
+            all_mates = local_reads.get(a_id, []) + mate_reads.get(a_id, [])
             germ_cons, coherence = reconstruct_germline_consensus(
                 germline_extensions[a_id],
                 max_len=150,
+                anchor_seq=a_seq,
+                local_reads=all_mates,
                 mate_reads=mate_reads.get(a_id, []),
+                threads=args.threads,
             )
             mh_len, mh_motif = annotate_microhomology(
                 germ_cons, repeat=args.telomere_repeat
@@ -155,8 +166,10 @@ def main():
             "break_window": break_window,
         })
 
-    # Deduplicate allelic break windows
-    deduped_loci = deduplicate_break_windows(loci, min_identity=0.95)
+    # Deduplicate allelic break windows via vsearch
+    deduped_loci = deduplicate_break_windows(
+        loci, min_identity=0.95, threads=args.threads
+    )
 
     # Deconvolve into classes and compute census
     classified_loci, census = deconvolve_and_census(

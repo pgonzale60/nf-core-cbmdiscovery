@@ -21,7 +21,7 @@ if [[ -n "${STAGED_PY}" || -n "${STAGED_POLICY}" ]]; then
     fi
 
     echo "[pre-commit] 3/4 Running unit & regression test suites..."
-    for test_script in modules/local/*/tests/test_*.py tests/test_*.py scripts/check_*.py; do
+    for test_script in modules/local/*/tests/test_*.py tests/test_*.py tests/python/test_*.py; do
         if [[ -f "${test_script}" ]]; then
             python3 "${test_script}" >/dev/null
         fi

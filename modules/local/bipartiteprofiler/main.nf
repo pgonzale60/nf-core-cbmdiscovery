@@ -4,11 +4,11 @@ process BIPARTITEPROFILER {
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/meme:5.5.5--pl5321he99cc7f_0' :
-        'quay.io/biocontainers/meme:5.5.5--pl5321he99cc7f_0' }"
+        'https://depot.galaxyproject.org/singularity/meme:5.5.9--pl5321he99cc7f_1' :
+        'quay.io/biocontainers/meme:5.5.9--pl5321he99cc7f_1' }"
 
     input:
-    tuple val(meta), path(break_windows_fasta), path(best_core_motif), path(census_json), path(core_metrics_json)
+    tuple val(meta), path(break_windows_fasta), path(best_core_motif), path(census_json), path(core_metrics_json), path(best_background)
 
     output:
     tuple val(meta), path("*.best_auxiliary_motif.meme")     , emit: best_auxiliary_motif
@@ -26,12 +26,13 @@ process BIPARTITEPROFILER {
     def prefix = task.ext.prefix ?: "${meta.id}"
 
     """
-    # Tool: cbm_bipartite_profiler.py | Script-SHA: 212dc81083ce2563
+    # Tool: cbm_bipartite_profiler.py | Script-SHA: 00f1b3c4b177d714
     cbm_bipartite_profiler.py \\
         --break-windows "${break_windows_fasta}" \\
         --core-meme "${best_core_motif}" \\
         --census-json "${census_json}" \\
         --core-metrics-json "${core_metrics_json}" \\
+        --background-bfile "${best_background}" \\
         --sample-id "${prefix}" \\
         --output-aux-meme "${prefix}.best_auxiliary_motif.meme" \\
         --output-spacing-tsv "${prefix}.bipartite_spacing_summary.tsv" \\
