@@ -41,11 +41,9 @@ def normalize_and_trim_flank(
         raw_flank = read_seq[: tract_info["tract_start"]]
     elif term_end == "5p" and t_orient == "rev":
         raw_flank = revcomp(read_seq[tract_info["tract_stop"] :])
-    elif term_end == "3p" and t_orient == "rev":
-        # Interstitial / inverted read
-        raw_flank = revcomp(read_seq[: tract_info["tract_start"]])
-    else:  # term_end == "5p" and t_orient == "fwd"
-        raw_flank = read_seq[tract_info["tract_stop"] :]
+    else:
+        # Inward-pointing tracts (3p rev, 5p fwd) are strictly rejected
+        return None
 
     if not raw_flank:
         return None

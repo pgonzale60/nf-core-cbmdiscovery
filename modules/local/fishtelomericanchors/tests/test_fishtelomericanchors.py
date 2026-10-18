@@ -150,6 +150,72 @@ class TestTeloAnchor(unittest.TestCase):
         self.assertEqual(clusters[0]["read_count"], 2)
         self.assertEqual(clusters[0]["consensus_seq"], self.soma_150)
 
+    def test_continuous_phase_microhomology_trimming(self):
+        # soma_150 ending in GCTT (shares 2 bp 'TT' microhomology with TTAGGC)
+        soma = self.soma_150[:-4] + "GCTT"
+        # Telomerase adds in-phase: AGGC + TTAGGC * 10
+        telomerase_addition = "AGGC" + ("TTAGGC" * 10)
+        full_read = soma + telomerase_addition + "A" * 10
+
+        tract = find_terminal_telomeric_tract(
+            full_read, repeat=self.repeat, platform="hifi"
+        )
+        self.assertIsNotNone(tract)
+        trimmed = normalize_and_trim_flank(
+            full_read, tract, repeat=self.repeat, max_flank_len=150
+        )
+        self.assertIsNotNone(trimmed)
+        # Position 0 must be trimmed back to 'GC', excluding 'TT'
+        self.assertEqual(trimmed["anchor_seq"], soma[:-2])
+        self.assertEqual(trimmed["microhomology_trimmed_len"], 2)
+
+    def test_inward_pointing_telomere_rejected(self):
+        # 5p forward array: 'TTAGGC' * 12 + soma_150
+        read_5p_fwd = ("TTAGGC" * 12) + self.soma_150
+        # 3p reverse array: soma_150 + 'GCCTAA' * 12
+        read_3p_rev = self.soma_150 + ("GCCTAA" * 12)
+
+        tract_5p = find_terminal_telomeric_tract(
+            read_5p_fwd, repeat=self.repeat, platform="hifi"
+        )
+        if tract_5p is not None:
+            flank_5p = normalize_and_trim_flank(
+                read_5p_fwd, tract_5p, repeat=self.repeat
+            )
+            self.assertIsNone(flank_5p)
+
+        tract_3p = find_terminal_telomeric_tract(
+            read_3p_rev, repeat=self.repeat, platform="hifi"
+        )
+        if tract_3p is not None:
+            flank_3p = normalize_and_trim_flank(
+                read_3p_rev, tract_3p, repeat=self.repeat
+            )
+            self.assertIsNone(flank_3p)
+
+    def test_fast_prefilter_short_circuit(self):
+        import time
+        from teloanchor.detector import find_terminal_telomeric_tract
+
+        # 1000 non-telomeric reads
+        non_telo = [self.soma_150] * 1000
+        # 5 telomeric reads
+        telo = [self.soma_150 + ("TTAGGC" * 12)] * 5
+        all_reads = non_telo + telo
+
+        t0 = time.perf_counter()
+        fished = 0
+        rep3 = self.repeat * 3
+        rc_rep3 = revcomp(self.repeat) * 3
+        for r in all_reads:
+            if rep3 not in r and rc_rep3 not in r:
+                continue
+            if find_terminal_telomeric_tract(r, repeat=self.repeat, platform="hifi"):
+                fished += 1
+        elapsed = time.perf_counter() - t0
+        self.assertEqual(fished, 5)
+        self.assertLess(elapsed, 0.05)
+
 
 if __name__ == "__main__":
     unittest.main()

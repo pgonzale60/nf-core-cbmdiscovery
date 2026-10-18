@@ -165,6 +165,61 @@ class TestBaitGermlineJunctions(unittest.TestCase):
         self.assertEqual(census["median_c_germ"], 6.0)
         self.assertAlmostEqual(census["germline_fraction"], 0.20, places=2)
 
+    def test_length_shifted_break_window_deduplication_and_count_merging(self):
+        soma_150 = self.anchor_seq
+        germ_150 = self.germ_flank
+        loci = [
+            {
+                "anchor_id": "anchor_1",
+                "anchor_seq": soma_150,
+                "germline_consensus": germ_150,
+                "break_window": soma_150 + germ_150,
+                "c_telo": 20,
+                "c_germ": 4,
+            },
+            {
+                "anchor_id": "anchor_2",
+                "anchor_seq": soma_150[-120:],
+                "germline_consensus": germ_150[:130],
+                "break_window": soma_150[-120:] + germ_150[:130],
+                "c_telo": 5,
+                "c_germ": 2,
+            },
+        ]
+        deduped = deduplicate_break_windows(loci, min_identity=0.95)
+        self.assertEqual(len(deduped), 1)
+        self.assertEqual(deduped[0]["c_telo"], 25)
+        self.assertEqual(deduped[0]["c_germ"], 6)
+
+    def test_illumina_short_prefix_and_mate_extension(self):
+        # 150 bp somatic anchor ending at pos 0
+        soma = self.anchor_seq
+        # 210 bp germline sequence starting at +1
+        germ_210 = (self.germ_flank + "ACGTACGT" * 10)[:210]
+
+        # Read A: [-45 .. +105] -> 45 bp soma + 105 bp germ
+        read_a = soma[-45:] + germ_210[:105]
+        # Read B: [-20 .. +130] -> 20 bp soma (starts at -20) + 130 bp germ
+        read_b = soma[-20:] + germ_210[:130]
+        # Read C: [+60 .. +210] -> 150 bp germline mate
+        read_c = germ_210[60:210]
+
+        p_a = partition_baited_read(soma, read_a, repeat=self.repeat)
+        p_b = partition_baited_read(soma, read_b, repeat=self.repeat)
+
+        self.assertIsNotNone(p_a)
+        self.assertIsNotNone(p_b)
+        self.assertEqual(p_a["branch"], "germline")
+        self.assertEqual(p_b["branch"], "germline")
+
+        # Initial extensions from junction reads
+        initial_exts = [p_a["germline_ext"], p_b["germline_ext"]]
+        cons, _coh = reconstruct_germline_consensus(
+            initial_exts, max_len=150, mate_reads=[read_c]
+        )
+        self.assertEqual(len(cons), 150)
+        self.assertEqual(cons, germ_210[:150])
+
 
 if __name__ == "__main__":
     unittest.main()

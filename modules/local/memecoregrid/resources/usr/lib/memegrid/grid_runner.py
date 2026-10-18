@@ -1,5 +1,6 @@
 """MEME parameter grid search runner and core motif selector."""
 
+from concurrent.futures import ProcessPoolExecutor, as_completed
 import csv
 import json
 import os
@@ -48,6 +49,56 @@ def generate_grid_conditions(radii: list[int] | None = None) -> list[dict[str, A
     return conditions
 
 
+def _run_single_condition(
+    meme_bin: str | None,
+    cond: dict[str, Any],
+    r_fa_str: str,
+    cond_dir_str: str,
+    total_seqs: int,
+) -> dict[str, Any] | None:
+    """Run MEME for a single condition and parse metrics."""
+    cond_dir = Path(cond_dir_str)
+    meme_txt = cond_dir / "meme.txt"
+    r = cond["radius"]
+    cid = cond["id"]
+
+    if meme_bin and not meme_txt.exists():
+        cmd = [
+            meme_bin,
+            r_fa_str,
+            "-dna",
+            "-nmotifs",
+            "1",
+            "-mod",
+            cond["mod"],
+            "-oc",
+            cond_dir_str,
+        ] + cond["w_args"]
+        if cond["revcomp"]:
+            cmd.append("-revcomp")
+
+        subprocess.run(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+
+    if meme_txt.exists():
+        metrics = parse_meme_txt(
+            str(meme_txt), radius=r, total_sequences=total_seqs
+        )
+        if metrics:
+            metrics["condition_id"] = cid
+            metrics["radius"] = r
+            metrics["mod"] = cond["mod"]
+            metrics["revcomp"] = cond["revcomp"]
+            metrics["w_label"] = cond["w_label"]
+            metrics["meme_txt_path"] = str(meme_txt)
+            return metrics
+    return None
+
+
 def run_meme_grid(
     break_windows_fasta: str | Path,
     output_dir: str | Path,
@@ -72,65 +123,47 @@ def run_meme_grid(
         write_sliced_fasta(records, r, r_fa, center_soma_len=150)
         sliced_fastas[r] = r_fa
 
-    # 2. Run MEME across grid conditions
+    # 2. Run MEME across grid conditions in parallel
     conditions = generate_grid_conditions(radii=radii)
-    grid_results = []
     runs_dir = out_path / "runs"
     runs_dir.mkdir(exist_ok=True)
 
     meme_bin = shutil.which("meme")
-
+    tasks = []
     for cond in conditions:
         cid = cond["id"]
         cond_dir = runs_dir / cid
         cond_dir.mkdir(exist_ok=True)
-        meme_txt = cond_dir / "meme.txt"
-
         r = cond["radius"]
         r_fa = sliced_fastas[r]
+        tasks.append((cond, str(r_fa), str(cond_dir)))
 
-        if meme_bin and not meme_txt.exists():
-            cmd = [
+    grid_results = []
+    max_workers = max(1, threads)
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        futures = [
+            executor.submit(
+                _run_single_condition,
                 meme_bin,
-                str(r_fa),
-                "-dna",
-                "-nmotifs",
-                "1",
-                "-mod",
-                cond["mod"],
-                "-p",
-                str(threads),
-                "-oc",
-                str(cond_dir),
-            ] + cond["w_args"]
-            if cond["revcomp"]:
-                cmd.append("-revcomp")
-
-            subprocess.run(
-                cmd,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=False,
+                cond,
+                r_fa_str,
+                c_dir_str,
+                total_seqs,
             )
-
-        if meme_txt.exists():
-            metrics = parse_meme_txt(
-                str(meme_txt), radius=r, total_sequences=total_seqs
-            )
-            if metrics:
-                metrics["condition_id"] = cid
-                metrics["radius"] = r
-                metrics["mod"] = cond["mod"]
-                metrics["revcomp"] = cond["revcomp"]
-                metrics["w_label"] = cond["w_label"]
-                metrics["meme_txt_path"] = str(meme_txt)
-                grid_results.append(metrics)
+            for cond, r_fa_str, c_dir_str in tasks
+        ]
+        for f in as_completed(futures):
+            res = f.result()
+            if res:
+                grid_results.append(res)
 
     # 3. Select best core motif maximizing composite score
     if not grid_results:
         return None, []
 
-    grid_results.sort(key=lambda x: x["composite_score"], reverse=True)
+    grid_results.sort(
+        key=lambda x: (x["composite_score"], -x["evalue"]), reverse=True
+    )
     best_motif = grid_results[0]
 
     return best_motif, grid_results

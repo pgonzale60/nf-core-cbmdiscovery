@@ -30,7 +30,7 @@ process BAITGERMLINEJUNCTIONS {
     def mem_gb = task.memory ? task.memory.toGiga() : 4
 
     """
-    # Tool: cbm_bait_germline_junctions.py | Script-SHA: 78d12ff97bab0dce
+    # Tool: cbm_bait_germline_junctions.py | Script-SHA: 7ab4ab88eb3d87dc
 
     # 1. Extract terminal 60 bp of candidate anchors into bait FASTA
     python3 -c "

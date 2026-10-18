@@ -97,19 +97,30 @@ def partition_baited_read(
     )
     align_res = find_probe_alignment(probe, read_seq, max_mismatches=2)
     if not align_res:
-        return None
-
-    match_start, match_stop, is_rc = align_res
-
-    # Forward-orient the read so probe is on forward strand
-    oriented_read = revcomp(read_seq) if is_rc else read_seq
-    if is_rc:
-        # Re-locate probe in oriented read
-        idx = oriented_read.find(probe)
-        if idx >= 0:
-            match_stop = idx + len(probe)
+        if len(anchor_seq) >= 20:
+            short_probe = anchor_seq[-20:]
+            rc_short = revcomp(short_probe)
+            if read_seq.startswith(short_probe):
+                match_stop = len(short_probe)
+                oriented_read = read_seq
+            elif read_seq.endswith(rc_short):
+                oriented_read = revcomp(read_seq)
+                match_stop = len(short_probe)
+            else:
+                return None
         else:
-            match_stop = len(read_seq) - match_start
+            return None
+    else:
+        match_start, match_stop, is_rc = align_res
+        # Forward-orient the read so probe is on forward strand
+        oriented_read = revcomp(read_seq) if is_rc else read_seq
+        if is_rc:
+            # Re-locate probe in oriented read
+            idx = oriented_read.find(probe)
+            if idx >= 0:
+                match_stop = idx + len(probe)
+            else:
+                match_stop = len(read_seq) - match_start
 
     flank_after_pos0 = oriented_read[match_stop:]
 

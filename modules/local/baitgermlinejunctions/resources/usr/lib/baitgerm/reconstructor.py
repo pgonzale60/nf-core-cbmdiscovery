@@ -9,11 +9,22 @@ def get_cyclic_prefixes(repeat: str) -> list[str]:
     return [repeat[:k] for k in range(n - 1, 0, -1)]
 
 
+def revcomp(seq: str) -> str:
+    """Reverse-complement a DNA sequence."""
+    tr = str.maketrans(
+        "ACGTURYKMSWBDHVNacgturykmswbdhvn", "TGCAAYRMKWSVHDBNtgcaayrmkwsvhdbn"
+    )
+    return seq.translate(tr)[::-1]
+
+
 def reconstruct_germline_consensus(
-    germline_extensions: list[str], max_len: int = 150
+    germline_extensions: list[str],
+    max_len: int = 150,
+    mate_reads: list[str] | None = None,
 ) -> tuple[str, float]:
     """Build majority-vote germline consensus from +1 to +max_len and calculate coherence.
 
+    Optionally extends consensus up to max_len using mate_reads.
     Returns (consensus_seq, coherence_fraction).
     """
     if not germline_extensions:
@@ -33,6 +44,38 @@ def reconstruct_germline_consensus(
     consensus_seq = "".join(consensus_chars)
     if not consensus_seq:
         return "", 0.0
+
+    # Mate extension if requested and consensus is shorter than max_len
+    if mate_reads and len(consensus_seq) < max_len:
+        extended = True
+        used_mates: set[int] = set()
+        while extended and len(consensus_seq) < max_len:
+            extended = False
+            for m_idx, mate in enumerate(mate_reads):
+                if m_idx in used_mates:
+                    continue
+                # Try forward and reverse-complement of mate
+                matched = False
+                for m in (mate, revcomp(mate)):
+                    for k in (25, 20):
+                        if len(consensus_seq) < k:
+                            continue
+                        seed = consensus_seq[-k:]
+                        idx = m.find(seed)
+                        if idx >= 0:
+                            ext_part = m[idx + k :]
+                            if ext_part:
+                                consensus_seq += ext_part
+                                if len(consensus_seq) > max_len:
+                                    consensus_seq = consensus_seq[:max_len]
+                                extended = True
+                                matched = True
+                                used_mates.add(m_idx)
+                                break
+                    if matched:
+                        break
+                if extended:
+                    break
 
     # Calculate Branch Coherence: fraction of aligned bases agreeing with consensus
     total_aligned = 0

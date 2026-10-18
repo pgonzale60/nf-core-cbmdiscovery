@@ -97,6 +97,87 @@ seq4  +  27  0.0001
         self.assertEqual(metrics["occupancy"], 1.0)
         self.assertGreater(metrics["composite_score"], 0.5)
 
+    def test_core_30bp_beats_short_6bp_motif(self):
+        import tempfile
+
+        # Condition 1: 6 bp, mean_ic ~ 1.85, evalue 1e-6
+        # matrix of 6 rows
+        m6 = """MEME version 4
+MOTIF SHORT 1 width = 6 sites = 20 llr = 50 E-value = 1e-006
+letter-probability matrix: alength= 4 w= 6 nsites= 20 E= 1e-006
+  0.9 0.05 0.05 0.0
+  0.9 0.05 0.05 0.0
+  0.9 0.05 0.05 0.0
+  0.0 0.9 0.05 0.05
+  0.0 0.05 0.9 0.05
+  0.05 0.05 0.0 0.9
+Multilevel AAACGT
+sites sorted by position p-value
+s1 + 25 1e-5
+s2 + 25 1e-5
+"""
+        # Condition 2: 30 bp, mean_ic ~ 1.55, evalue 1e-40
+        row_30 = "\n".join(["  0.8 0.1 0.1 0.0" if i % 2 == 0 else "  0.0 0.8 0.1 0.1" for i in range(30)])
+        m30 = f"""MEME version 4
+MOTIF LONGCORE 1 width = 30 sites = 20 llr = 200 E-value = 1e-040
+letter-probability matrix: alength= 4 w= 30 nsites= 20 E= 1e-040
+{row_30}
+Multilevel {"AC" * 15}
+sites sorted by position p-value
+s1 + 25 1e-5
+s2 + 25 1e-5
+"""
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f6:
+            f6.write(m6)
+            p6 = f6.name
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f30:
+            f30.write(m30)
+            p30 = f30.name
+
+        met6 = parse_meme_txt(p6, radius=30, total_sequences=2)
+        met30 = parse_meme_txt(p30, radius=30, total_sequences=2)
+
+        self.assertIsNotNone(met6)
+        self.assertIsNotNone(met30)
+        # Condition 2 (30 bp) must beat Condition 1 (6 bp)
+        self.assertGreater(met30["composite_score"], met6["composite_score"])
+
+    def test_insignificant_evalue_filtered_out(self):
+        import tempfile
+
+        # Motif with evalue = 2.5
+        m_insig = """MEME version 4
+MOTIF NOISE 1 width = 6 sites = 5 llr = 10 E-value = 2.5
+letter-probability matrix: alength= 4 w= 6 nsites= 5 E= 2.5
+  0.9 0.05 0.05 0.0
+  0.9 0.05 0.05 0.0
+  0.9 0.05 0.05 0.0
+  0.0 0.9 0.05 0.05
+  0.0 0.05 0.9 0.05
+  0.05 0.05 0.0 0.9
+Multilevel AAACGT
+sites sorted by position p-value
+s1 + 25 0.1
+"""
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as tf:
+            tf.write(m_insig)
+            p_tf = tf.name
+
+        met = parse_meme_txt(p_tf, radius=30, total_sequences=1)
+        self.assertIsNotNone(met)
+        # Must have score 0 or be marked insignificant
+        self.assertEqual(met["composite_score"], 0.0)
+
+    def test_parallel_grid_runner_no_mpi_flag(self):
+        import inspect
+        from memegrid import grid_runner
+
+        src = inspect.getsource(grid_runner)
+        # Verify -p is NOT passed to meme command
+        self.assertNotIn('"-p"', src)
+        # Verify ProcessPoolExecutor is used
+        self.assertIn("ProcessPoolExecutor", src)
+
 
 if __name__ == "__main__":
     unittest.main()

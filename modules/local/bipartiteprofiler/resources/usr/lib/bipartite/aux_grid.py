@@ -1,5 +1,6 @@
 """Tier-2 Auxiliary motif grid search on core-masked break windows."""
 
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from collections import Counter
 import math
 import os
@@ -210,6 +211,48 @@ def parse_aux_meme_results(
     }
 
 
+def _run_single_aux_condition(
+    meme_bin: str | None,
+    cond: dict[str, Any],
+    masked_fa_str: str,
+    cond_dir_str: str,
+) -> dict[str, Any] | None:
+    """Run MEME for a single auxiliary condition and parse metrics."""
+    cond_dir = Path(cond_dir_str)
+    meme_txt = cond_dir / "meme.txt"
+    cid = cond["id"]
+
+    if meme_bin and not meme_txt.exists():
+        cmd = [
+            meme_bin,
+            masked_fa_str,
+            "-dna",
+            "-nmotifs",
+            "1",
+            "-mod",
+            cond["mod"],
+            "-oc",
+            cond_dir_str,
+        ] + cond["w_args"]
+        if cond["revcomp"]:
+            cmd.append("-revcomp")
+        subprocess.run(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+
+    metrics = parse_aux_meme_results(str(meme_txt))
+    if metrics:
+        metrics["id"] = cid
+        metrics["mod"] = cond["mod"]
+        metrics["revcomp"] = cond["revcomp"]
+        metrics["meme_txt_path"] = str(meme_txt)
+        return metrics
+    return None
+
+
 def run_auxiliary_grid(
     masked_fasta: str | Path,
     out_dir: str | Path,
@@ -220,44 +263,24 @@ def run_auxiliary_grid(
     out_path.mkdir(parents=True, exist_ok=True)
 
     meme_bin = shutil.which("meme")
-    results = []
-
+    tasks = []
     for cond in AUX_GRID_CONDITIONS:
         cid = cond["id"]
         cond_dir = out_path / cid
         cond_dir.mkdir(exist_ok=True)
-        meme_txt = cond_dir / "meme.txt"
+        tasks.append((cond, str(masked_fasta), str(cond_dir)))
 
-        if meme_bin and not meme_txt.exists():
-            cmd = [
-                meme_bin,
-                str(masked_fasta),
-                "-dna",
-                "-nmotifs",
-                "1",
-                "-mod",
-                cond["mod"],
-                "-p",
-                str(threads),
-                "-oc",
-                str(cond_dir),
-            ] + cond["w_args"]
-            if cond["revcomp"]:
-                cmd.append("-revcomp")
-            subprocess.run(
-                cmd,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=False,
-            )
-
-        metrics = parse_aux_meme_results(str(meme_txt))
-        if metrics:
-            metrics["id"] = cid
-            metrics["mod"] = cond["mod"]
-            metrics["revcomp"] = cond["revcomp"]
-            metrics["meme_txt_path"] = str(meme_txt)
-            results.append(metrics)
+    results = []
+    max_workers = max(1, threads)
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        futures = [
+            executor.submit(_run_single_aux_condition, meme_bin, cond, m_fa, c_dir)
+            for cond, m_fa, c_dir in tasks
+        ]
+        for f in as_completed(futures):
+            res = f.result()
+            if res:
+                results.append(res)
 
     # Check for significant auxiliary motif
     sig_candidates = [

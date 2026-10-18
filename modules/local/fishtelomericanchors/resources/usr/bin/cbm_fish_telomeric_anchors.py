@@ -12,7 +12,7 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 from teloanchor.cluster import cluster_anchors  # noqa: E402
-from teloanchor.detector import find_terminal_telomeric_tract  # noqa: E402
+from teloanchor.detector import find_terminal_telomeric_tract, revcomp  # noqa: E402
 from teloanchor.orient import normalize_and_trim_flank  # noqa: E402
 from teloanchor.reader import stream_fastq, stream_paired_fastq  # noqa: E402
 
@@ -60,6 +60,11 @@ def parse_args():
 
 
 def process_read(qname, seq, platform, repeat, max_flank):
+    # Fast short-circuit prefilter in Python
+    rep3 = repeat * 3
+    rc_rep3 = revcomp(repeat) * 3
+    if rep3 not in seq and rc_rep3 not in seq:
+        return None
     tract = find_terminal_telomeric_tract(seq, repeat=repeat, platform=platform)
     if not tract:
         return None

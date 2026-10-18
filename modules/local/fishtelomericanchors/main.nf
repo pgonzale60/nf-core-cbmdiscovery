@@ -26,7 +26,7 @@ process FISHTELOMERICANCHORS {
     def reads_arg = meta.single_end ? "--reads-1 ${reads}" : "--reads-1 ${reads[0]} --reads-2 ${reads[1]}"
 
     """
-    # Tool: cbm_fish_telomeric_anchors.py | Script-SHA: 40b5041256095b79
+    # Tool: cbm_fish_telomeric_anchors.py | Script-SHA: d3909feccd93f96f
     cbm_fish_telomeric_anchors.py \\
         ${reads_arg} \\
         --platform ${platform} \\

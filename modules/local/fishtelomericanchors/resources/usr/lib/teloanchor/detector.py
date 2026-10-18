@@ -36,10 +36,11 @@ def find_terminal_telomeric_tract(
         - tract_len: int
         - non_telo_flank: str (raw orientation in read)
     or None if no terminal tract meets the criteria.
+    Inward-pointing tracts (3p rev, 5p fwd) are strictly rejected.
     """
     repeat = repeat.upper()
-    rep_len = len(repeat)
     rev_repeat = revcomp(repeat)
+    rep_len = len(repeat)
 
     if platform.lower() == "hifi":
         eff_min_repeats = 10 if min_repeats is None else min_repeats
@@ -50,89 +51,93 @@ def find_terminal_telomeric_tract(
         eff_tip_tol = 30 if tip_tolerance_bp is None else tip_tolerance_bp
         eff_min_flank = 50 if min_flank_bp is None else min_flank_bp
 
-    min_tract_len = eff_min_repeats * rep_len
-    fwd_perms = get_cyclic_permutations(repeat)
-    rev_perms = get_cyclic_permutations(rev_repeat)
-
-    hits: list[tuple[int, int, str]] = []
-    # Search for forward permutations
-    for p in fwd_perms:
-        idx = seq.find(p)
-        while idx >= 0:
-            hits.append((idx, idx + len(p), "fwd"))
-            idx = seq.find(p, idx + 1)
-    # Search for reverse complement permutations
-    for p in rev_perms:
-        idx = seq.find(p)
-        while idx >= 0:
-            hits.append((idx, idx + len(p), "rev"))
-            idx = seq.find(p, idx + 1)
-
-    if not hits:
-        return None
-
-    hits.sort(key=lambda x: (x[0], x[1]))
-
-    # Merge into runs within gap_tolerance_bp having compatible orientation
-    runs: list[dict[str, Any]] = []
-    cur_start, cur_stop, cur_orients = hits[0][0], hits[0][1], [hits[0][2]]
-
-    for start, stop, orient in hits[1:]:
-        if start - cur_stop <= gap_tolerance_bp:
-            cur_stop = max(cur_stop, stop)
-            cur_orients.append(orient)
-        else:
-            fwd_count = cur_orients.count("fwd")
-            rev_count = cur_orients.count("rev")
-            dom_orient = "fwd" if fwd_count >= rev_count else "rev"
-            runs.append({
-                "start": cur_start,
-                "stop": cur_stop,
-                "len": cur_stop - cur_start,
-                "orient": dom_orient,
-            })
-            cur_start, cur_stop, cur_orients = start, stop, [orient]
-
-    fwd_count = cur_orients.count("fwd")
-    rev_count = cur_orients.count("rev")
-    dom_orient = "fwd" if fwd_count >= rev_count else "rev"
-    runs.append({
-        "start": cur_start,
-        "stop": cur_stop,
-        "len": cur_stop - cur_start,
-        "orient": dom_orient,
-    })
-
     read_len = len(seq)
+    prefixes = [repeat[:k] for k in range(rep_len - 1, 0, -1)]
 
-    # 1. Check 3' terminal tract (most common for fwd somatic -> telo)
-    for r in reversed(runs):
-        dist_from_3p = read_len - r["stop"]
-        if dist_from_3p <= eff_tip_tol and r["len"] >= min_tract_len:
-            flank = seq[: r["start"]]
-            if len(flank) >= eff_min_flank:
-                return {
-                    "terminal_end": "3p",
-                    "tract_orientation": r["orient"],
-                    "tract_start": r["start"],
-                    "tract_stop": r["stop"],
-                    "tract_len": r["len"],
-                    "non_telo_flank": flank,
-                }
+    # 1. 3p fwd search (canonical repeat only; rejects inward 3p rev)
+    hits_fwd: list[tuple[int, int]] = []
+    idx = seq.find(repeat)
+    while idx >= 0:
+        hits_fwd.append((idx, idx + rep_len))
+        idx = seq.find(repeat, idx + 1)
 
-    # 2. Check 5' terminal tract
-    for r in runs:
-        dist_from_5p = r["start"]
-        if dist_from_5p <= eff_tip_tol and r["len"] >= min_tract_len:
-            flank = seq[r["stop"] :]
-            if len(flank) >= eff_min_flank:
-                return {
-                    "terminal_end": "5p",
-                    "tract_orientation": r["orient"],
-                    "tract_start": r["start"],
-                    "tract_stop": r["stop"],
-                    "tract_len": r["len"],
-                    "non_telo_flank": flank,
-                }
+    if hits_fwd:
+        runs_fwd: list[tuple[int, int]] = []
+        c_start, c_stop = hits_fwd[0]
+        for s, e in hits_fwd[1:]:
+            if s - c_stop <= gap_tolerance_bp:
+                c_stop = max(c_stop, e)
+            else:
+                runs_fwd.append((c_start, c_stop))
+                c_start, c_stop = s, e
+        runs_fwd.append((c_start, c_stop))
+
+        for r_start, r_stop in reversed(runs_fwd):
+            if (read_len - r_stop) <= eff_tip_tol and (r_stop - r_start) >= (eff_min_repeats - 1) * rep_len:
+                t_start = r_start
+                # If flank before r_start does not end in a prefix of repeat,
+                # check if the microhomology prefix was absorbed into the first unit at r_start
+                if not any(seq[:r_start].endswith(p) for p in prefixes):
+                    for m in range(rep_len - 1, 0, -1):
+                        if seq[:r_start].endswith(repeat[-m:]):
+                            k = m
+                            pos = r_start + k
+                            if seq[r_start:pos] == repeat[:k]:
+                                t_start = pos
+                                break
+
+                flank = seq[:t_start]
+                if len(flank) >= eff_min_flank:
+                    return {
+                        "terminal_end": "3p",
+                        "tract_orientation": "fwd",
+                        "tract_start": t_start,
+                        "tract_stop": r_stop,
+                        "tract_len": r_stop - t_start,
+                        "non_telo_flank": flank,
+                    }
+
+    # 2. 5p rev search (canonical rev_repeat only; rejects inward 5p fwd)
+    hits_rev: list[tuple[int, int]] = []
+    idx = seq.find(rev_repeat)
+    while idx >= 0:
+        hits_rev.append((idx, idx + rep_len))
+        idx = seq.find(rev_repeat, idx + 1)
+
+    if hits_rev:
+        runs_rev: list[tuple[int, int]] = []
+        c_start, c_stop = hits_rev[0]
+        for s, e in hits_rev[1:]:
+            if s - c_stop <= gap_tolerance_bp:
+                c_stop = max(c_stop, e)
+            else:
+                runs_rev.append((c_start, c_stop))
+                c_start, c_stop = s, e
+        runs_rev.append((c_start, c_stop))
+
+        rc_prefixes = [revcomp(p) for p in prefixes]
+        for r_start, r_stop in runs_rev:
+            if r_start <= eff_tip_tol and (r_stop - r_start) >= (eff_min_repeats - 1) * rep_len:
+                t_stop = r_stop
+                if not any(seq[r_stop:].startswith(p) for p in rc_prefixes):
+                    for m in range(rep_len - 1, 0, -1):
+                        rc_suf = revcomp(repeat[-m:])
+                        if seq[r_stop:].startswith(rc_suf):
+                            k = m
+                            pos = r_stop - k
+                            if seq[pos:r_stop] == revcomp(repeat[:k]):
+                                t_stop = pos
+                                break
+
+                flank = seq[t_stop:]
+                if len(flank) >= eff_min_flank:
+                    return {
+                        "terminal_end": "5p",
+                        "tract_orientation": "rev",
+                        "tract_start": r_start,
+                        "tract_stop": t_stop,
+                        "tract_len": t_stop - r_start,
+                        "non_telo_flank": flank,
+                    }
 
     return None

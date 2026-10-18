@@ -132,9 +132,12 @@ def parse_meme_txt(
 
     # Score rewards mean IC, occupancy, and tight positional clustering around pos 0
     iqr_penalty = 1.0 / (1.0 + math.log1p(max(0.0, pos_iqr)))
-    composite_score = (
-        mean_ic * occupancy * iqr_penalty * homopolymer_factor
-    )
+    if evalue > 0.05:
+        composite_score = 0.0
+    else:
+        composite_score = (
+            (mean_ic * math.sqrt(w)) * occupancy * iqr_penalty * homopolymer_factor
+        )
 
     return {
         "width": w,
