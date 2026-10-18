@@ -28,9 +28,10 @@ process BAITGERMLINEJUNCTIONS {
     def r1 = is_single ? "${reads}" : "${reads[0]}"
     def r2 = is_single ? "" : "${reads[1]}"
     def mem_gb = task.memory ? task.memory.toGiga() : 4
+    def bait_k = Math.min((kmer_size as int), 20)
 
     """
-    # Tool: cbm_bait_germline_junctions.py | Script-SHA: 7ab4ab88eb3d87dc
+    # Tool: cbm_bait_germline_junctions.py | Script-SHA: 99a5f0fbbfbff0dd
 
     # 1. Extract terminal 60 bp of candidate anchors into bait FASTA
     python3 -c "
@@ -53,23 +54,15 @@ with open('${candidate_anchors}') as f_in, open('anchors_terminal_60bp.fasta', '
         f_out.write(f'>{cur_id}\\n{s[-60:]}\\n')
 "
 
-    # 2. High-speed C++ k-mer baiting via KMC if available, else native Python streaming
+    # 2. High-speed multi-threaded C++ k-mer baiting via KMC unconditionally
     mkdir -p kmc_tmp
-    if command -v kmc >/dev/null 2>&1 && command -v kmc_tools >/dev/null 2>&1; then
-        kmc -k${kmer_size} -m${mem_gb} -t${task.cpus} -ci1 -fa anchors_terminal_60bp.fasta anchors_kmc kmc_tmp
-        kmc_tools filter -t${task.cpus} anchors_kmc -ci1 "${r1}" -fq "baited_reads_1.fastq"
-        if [ -n "${r2}" ]; then
-            kmc_tools filter -t${task.cpus} anchors_kmc -ci1 "${r2}" -fq "baited_reads_2.fastq"
-            READS_ARGS="--reads-1 baited_reads_1.fastq --reads-2 baited_reads_2.fastq"
-        else
-            READS_ARGS="--reads-1 baited_reads_1.fastq"
-        fi
+    kmc -k${bait_k} -m${mem_gb} -t${task.cpus} -ci1 -fa anchors_terminal_60bp.fasta anchors_kmc kmc_tmp
+    kmc_tools filter -t${task.cpus} anchors_kmc -ci1 "${r1}" -fq "baited_reads_1.fastq"
+    if [ -n "${r2}" ]; then
+        kmc_tools filter -t${task.cpus} anchors_kmc -ci1 "${r2}" -fq "baited_reads_2.fastq"
+        READS_ARGS="--reads-1 baited_reads_1.fastq --reads-2 baited_reads_2.fastq"
     else
-        if [ -n "${r2}" ]; then
-            READS_ARGS="--reads-1 ${r1} --reads-2 ${r2}"
-        else
-            READS_ARGS="--reads-1 ${r1}"
-        fi
+        READS_ARGS="--reads-1 baited_reads_1.fastq"
     fi
 
     # 3. Exact bifurcation partitioning, microhomology annotation, and junction census

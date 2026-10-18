@@ -12,9 +12,9 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 from teloanchor.cluster import cluster_anchors  # noqa: E402
-from teloanchor.detector import find_terminal_telomeric_tract, revcomp  # noqa: E402
+from teloanchor.detector import find_terminal_telomeric_tract  # noqa: E402
 from teloanchor.orient import normalize_and_trim_flank  # noqa: E402
-from teloanchor.reader import stream_fastq, stream_paired_fastq  # noqa: E402
+from teloanchor.reader import stream_fastq  # noqa: E402
 
 
 def parse_args():
@@ -60,11 +60,6 @@ def parse_args():
 
 
 def process_read(qname, seq, platform, repeat, max_flank):
-    # Fast short-circuit prefilter in Python
-    rep3 = repeat * 3
-    rc_rep3 = revcomp(repeat) * 3
-    if rep3 not in seq and rc_rep3 not in seq:
-        return None
     tract = find_terminal_telomeric_tract(seq, repeat=repeat, platform=platform)
     if not tract:
         return None
@@ -92,20 +87,12 @@ def main():
     total_reads = 0
     fished_observations = []
 
+    read_files = [args.reads_1]
     if args.reads_2:
-        for (q1, s1, _ql1), (q2, s2, _ql2) in stream_paired_fastq(
-            args.reads_1, args.reads_2
-        ):
-            total_reads += 2
-            obs1 = process_read(q1, s1, platform, repeat, max_flank)
-            if obs1:
-                fished_observations.append(obs1)
-            else:
-                obs2 = process_read(q2, s2, platform, repeat, max_flank)
-                if obs2:
-                    fished_observations.append(obs2)
-    else:
-        for qname, seq, _qual in stream_fastq(args.reads_1):
+        read_files.append(args.reads_2)
+
+    for rf in read_files:
+        for qname, seq, _qual in stream_fastq(rf):
             total_reads += 1
             obs = process_read(qname, seq, platform, repeat, max_flank)
             if obs:

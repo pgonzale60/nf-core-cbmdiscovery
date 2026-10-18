@@ -222,7 +222,9 @@ def _run_single_aux_condition(
     meme_txt = cond_dir / "meme.txt"
     cid = cond["id"]
 
-    if meme_bin and not meme_txt.exists():
+    if not meme_txt.exists():
+        if not meme_bin:
+            raise RuntimeError("Required binary 'meme' not found in PATH")
         cmd = [
             meme_bin,
             masked_fa_str,
@@ -240,7 +242,7 @@ def _run_single_aux_condition(
             cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            check=False,
+            check=True,
         )
 
     metrics = parse_aux_meme_results(str(meme_txt))
@@ -263,6 +265,8 @@ def run_auxiliary_grid(
     out_path.mkdir(parents=True, exist_ok=True)
 
     meme_bin = shutil.which("meme")
+    if not meme_bin and not any(out_path.glob("*/meme.txt")):
+        raise RuntimeError("Required binary 'meme' not found in PATH")
     tasks = []
     for cond in AUX_GRID_CONDITIONS:
         cid = cond["id"]

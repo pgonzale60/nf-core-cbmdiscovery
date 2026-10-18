@@ -193,24 +193,63 @@ class TestTeloAnchor(unittest.TestCase):
             )
             self.assertIsNone(flank_3p)
 
-    def test_fast_prefilter_short_circuit(self):
-        import time
-        from teloanchor.detector import find_terminal_telomeric_tract
+    def test_phase_trimming_across_arbitrary_somatic_endings(self):
+        soma_base = self.soma_150[:100]
+        # Case A: soma_base + "AA" + "TT" (2-bp microhomology) + "AGGC" + ("TTAGGC" * 10)
+        read_a = soma_base + "AA" + "TT" + "AGGC" + (self.repeat * 10)
+        tract_a = find_terminal_telomeric_tract(
+            read_a, repeat=self.repeat, platform="hifi"
+        )
+        self.assertIsNotNone(tract_a)
+        trimmed_a = normalize_and_trim_flank(
+            read_a, tract_a, repeat=self.repeat
+        )
+        self.assertIsNotNone(trimmed_a)
+        self.assertTrue(trimmed_a["anchor_seq"].endswith("AA"))
+        self.assertEqual(len(trimmed_a["anchor_seq"]), len(soma_base) + 2)
+        self.assertEqual(trimmed_a["microhomology_trimmed_len"], 2)
 
-        # 1000 non-telomeric reads
+        # Case B: soma_base + "CC" + "TTAG" (4-bp microhomology) + "GC" + ("TTAGGC" * 10)
+        read_b = soma_base + "CC" + "TTAG" + "GC" + (self.repeat * 10)
+        tract_b = find_terminal_telomeric_tract(
+            read_b, repeat=self.repeat, platform="hifi"
+        )
+        self.assertIsNotNone(tract_b)
+        trimmed_b = normalize_and_trim_flank(
+            read_b, tract_b, repeat=self.repeat
+        )
+        self.assertIsNotNone(trimmed_b)
+        self.assertTrue(trimmed_b["anchor_seq"].endswith("CC"))
+        self.assertEqual(trimmed_b["microhomology_trimmed_len"], 4)
+
+        # Case C (5p reverse complement): ("GCCTAA" * 10) + "GCCT" + revcomp(soma_base + "CC" + "TTAG")
+        rev_rep = revcomp(self.repeat)
+        read_c = (rev_rep * 10) + "GCCT" + revcomp(soma_base + "CC" + "TTAG")
+        tract_c = find_terminal_telomeric_tract(
+            read_c, repeat=self.repeat, platform="hifi"
+        )
+        self.assertIsNotNone(tract_c)
+        trimmed_c = normalize_and_trim_flank(
+            read_c, tract_c, repeat=self.repeat
+        )
+        self.assertIsNotNone(trimmed_c)
+        self.assertEqual(trimmed_c["anchor_seq"], soma_base + "CC")
+        self.assertEqual(trimmed_c["microhomology_trimmed_len"], 4)
+
+    def test_fast_prefilter_inside_detector(self):
+        import time
+
+        # 1000 non-telomeric reads + 5 telomeric reads
         non_telo = [self.soma_150] * 1000
-        # 5 telomeric reads
-        telo = [self.soma_150 + ("TTAGGC" * 12)] * 5
+        telo = [self.soma_150 + (self.repeat * 12)] * 5
         all_reads = non_telo + telo
 
         t0 = time.perf_counter()
         fished = 0
-        rep3 = self.repeat * 3
-        rc_rep3 = revcomp(self.repeat) * 3
         for r in all_reads:
-            if rep3 not in r and rc_rep3 not in r:
-                continue
-            if find_terminal_telomeric_tract(r, repeat=self.repeat, platform="hifi"):
+            if find_terminal_telomeric_tract(
+                r, repeat=self.repeat, platform="hifi"
+            ):
                 fished += 1
         elapsed = time.perf_counter() - t0
         self.assertEqual(fished, 5)

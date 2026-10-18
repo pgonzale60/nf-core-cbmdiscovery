@@ -220,6 +220,88 @@ class TestBaitGermlineJunctions(unittest.TestCase):
         self.assertEqual(len(cons), 150)
         self.assertEqual(cons, germ_210[:150])
 
+    def test_end_to_end_cli_illumina_short_prefix_and_extension(self):
+        import subprocess
+        import tempfile
+
+        # 150 bp somatic anchor ending at pos 0
+        soma = self.anchor_seq
+        # 210 bp germline sequence starting at +1
+        germ_210 = (self.germ_flank + "ACGTACGT" * 10)[:210]
+
+        # Read A: [-45 .. +105] (in r1)
+        read_a = soma[-45:] + germ_210[:105]
+        # Read B: [-20 .. +130] (in r1)
+        read_b = soma[-20:] + germ_210[:130]
+        # Read C: [+60 .. +210] (in r2)
+        read_c = germ_210[60:210]
+
+        with tempfile.TemporaryDirectory() as td:
+            tdp = pathlib.Path(td)
+            fa_cand = tdp / "candidate_anchors.fasta"
+            fa_cand.write_text(f">anchor_1\n{soma}\n")
+
+            # r1.fastq has read_a, read_b, plus 5 extra dummy reads (different line count)
+            r1_fq = tdp / "r1.fastq"
+            dummy_reads = "\n".join([
+                f"@dummy_{i}\nAAAAACCCCCGGGGGTTTTTAAAAACCCCCGGGGGTTTTTAAAAACCCCC\n+\n"
+                + ("I" * 50)
+                for i in range(5)
+            ])
+            r1_content = (
+                f"@read_a/1\n{read_a}\n+\n"
+                + ("I" * len(read_a))
+                + f"\n@read_b/1\n{read_b}\n+\n"
+                + ("I" * len(read_b))
+                + f"\n{dummy_reads}\n"
+            )
+            r1_fq.write_text(r1_content)
+
+            # r2.fastq has only read_c
+            r2_fq = tdp / "r2.fastq"
+            r2_content = f"@read_c/2\n{read_c}\n+\n" + ("I" * len(read_c)) + "\n"
+            r2_fq.write_text(r2_content)
+
+            out_fa = tdp / "break_windows_300bp.fasta"
+            out_tsv = tdp / "junction_catalog.tsv"
+            out_json = tdp / "census.json"
+
+            cli_script = (
+                REPO_ROOT
+                / "modules"
+                / "local"
+                / "baitgermlinejunctions"
+                / "resources"
+                / "usr"
+                / "bin"
+                / "cbm_bait_germline_junctions.py"
+            ).resolve()
+
+            cmd = [
+                sys.executable,
+                str(cli_script),
+                "--candidate-anchors", str(fa_cand),
+                "--reads-1", str(r1_fq),
+                "--reads-2", str(r2_fq),
+                "--platform", "illumina",
+                "--min-germ-reads", "2",
+                "--output-catalog", str(out_tsv),
+                "--output-fasta", str(out_fa),
+                "--output-census", str(out_json),
+            ]
+            subprocess.run(cmd, capture_output=True, text=True, check=True)
+
+            out_content = out_fa.read_text()
+            lines = [
+                l.strip()
+                for l in out_content.splitlines()
+                if l.strip() and not l.startswith(">")
+            ]
+            seq = "".join(lines)
+            self.assertEqual(len(seq), 300)
+            self.assertEqual(seq[:150], soma)
+            self.assertEqual(seq[150:], germ_210[:150])
+
 
 if __name__ == "__main__":
     unittest.main()

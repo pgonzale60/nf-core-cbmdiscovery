@@ -45,8 +45,10 @@ def run_fimo(
     out_path.mkdir(parents=True, exist_ok=True)
     fimo_tsv = out_path / "fimo.tsv"
 
-    fimo_bin = shutil.which("fimo")
-    if fimo_bin:
+    if not fimo_tsv.exists():
+        fimo_bin = shutil.which("fimo")
+        if not fimo_bin:
+            raise RuntimeError("Required binary 'fimo' not found in PATH")
         cmd = [
             fimo_bin,
             "--thresh",
@@ -60,7 +62,7 @@ def run_fimo(
             cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            check=False,
+            check=True,
         )
 
     hits = []

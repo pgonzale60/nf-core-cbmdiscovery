@@ -16,6 +16,7 @@ from baitgerm.baiter import (  # noqa: E402
     bait_reads,
     build_kmer_bait_index,
     load_candidate_anchors,
+    recruit_extension_mates,
 )
 from baitgerm.census import (  # noqa: E402
     deconvolve_and_census,
@@ -92,14 +93,15 @@ def main():
     if not anchors:
         print(f"Warning: No anchors found in {args.candidate_anchors}")
 
-    bait_index = build_kmer_bait_index(anchors, kmer_size=args.kmer_size)
+    bait_k = min(args.kmer_size, 20)
+    bait_index = build_kmer_bait_index(anchors, kmer_size=bait_k)
 
     # Track extensions and counts per anchor
     telo_counts = {a_id: 0 for a_id in anchors}
     germline_extensions = {a_id: [] for a_id in anchors}
 
     for hit in bait_reads(
-        args.reads_1, args.reads_2, bait_index, kmer_size=args.kmer_size
+        args.reads_1, args.reads_2, bait_index, kmer_size=bait_k
     ):
         a_id = hit["anchor_id"]
         a_seq = anchors[a_id]
@@ -113,6 +115,13 @@ def main():
         elif p_res["branch"] == "germline":
             germline_extensions[a_id].append(p_res["germline_ext"])
 
+    fastq_files = [args.reads_1]
+    if args.reads_2:
+        fastq_files.append(args.reads_2)
+    mate_reads = recruit_extension_mates(
+        fastq_files, germline_extensions, kmer_size=bait_k
+    )
+
     loci = []
     for a_id, a_seq in anchors.items():
         c_telo = telo_counts[a_id]
@@ -125,7 +134,9 @@ def main():
 
         if c_germ >= args.min_germ_reads:
             germ_cons, coherence = reconstruct_germline_consensus(
-                germline_extensions[a_id], max_len=150
+                germline_extensions[a_id],
+                max_len=150,
+                mate_reads=mate_reads.get(a_id, []),
             )
             mh_len, mh_motif = annotate_microhomology(
                 germ_cons, repeat=args.telomere_repeat

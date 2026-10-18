@@ -3,9 +3,7 @@ process FISHTELOMERICANCHORS {
     label 'process_medium'
 
     conda "${moduleDir}/environment.yml"
-    container "${ workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/python:3.10.4' :
-        'quay.io/biocontainers/python:3.10.4' }"
+    container 'community.wave.seqera.io/library/kmc_python:d875681ce2658826'
 
     input:
     tuple val(meta), path(reads)
@@ -23,12 +21,34 @@ process FISHTELOMERICANCHORS {
     def args   = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}"
     def platform = meta.platform ?: "hifi"
-    def reads_arg = meta.single_end ? "--reads-1 ${reads}" : "--reads-1 ${reads[0]} --reads-2 ${reads[1]}"
+    def is_single = meta.single_end
+    def r1 = is_single ? "${reads}" : "${reads[0]}"
+    def r2 = is_single ? "" : "${reads[1]}"
+    def mem_gb = task.memory ? task.memory.toGiga() : 4
 
     """
-    # Tool: cbm_fish_telomeric_anchors.py | Script-SHA: d3909feccd93f96f
+    # Tool: cbm_fish_telomeric_anchors.py | Script-SHA: 5b3a02e5b09d5e59
+
+    # 1. Unconditionally build KMC 18-mer database from 4 tandem repeats
+    mkdir -p kmc_tmp
+    python3 -c "
+repeat = '${telomere_repeat}'.upper()
+telo_4x = repeat * 4
+with open('telo_seed.fasta', 'w') as f:
+    f.write(f'>telo_seed\\n{telo_4x}\\n')
+"
+    kmc -k18 -m${mem_gb} -t${task.cpus} -ci1 -fa telo_seed.fasta telo_kmc kmc_tmp
+    kmc_tools filter -t${task.cpus} telo_kmc -ci1 "${r1}" -fq "fished_1.fastq"
+    if [ -n "${r2}" ]; then
+        kmc_tools filter -t${task.cpus} telo_kmc -ci1 "${r2}" -fq "fished_2.fastq"
+        READS_ARGS="--reads-1 fished_1.fastq --reads-2 fished_2.fastq"
+    else
+        READS_ARGS="--reads-1 fished_1.fastq"
+    fi
+
+    # 2. Extract somatic anchors from fished reads
     cbm_fish_telomeric_anchors.py \\
-        ${reads_arg} \\
+        \${READS_ARGS} \\
         --platform ${platform} \\
         --telomere-repeat ${telomere_repeat} \\
         --output-fasta "${prefix}.candidate_anchors.fasta" \\

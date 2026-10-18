@@ -62,7 +62,9 @@ def _run_single_condition(
     r = cond["radius"]
     cid = cond["id"]
 
-    if meme_bin and not meme_txt.exists():
+    if not meme_txt.exists():
+        if not meme_bin:
+            raise RuntimeError("Required binary 'meme' not found in PATH")
         cmd = [
             meme_bin,
             r_fa_str,
@@ -81,7 +83,7 @@ def _run_single_condition(
             cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            check=False,
+            check=True,
         )
 
     if meme_txt.exists():
@@ -129,6 +131,8 @@ def run_meme_grid(
     runs_dir.mkdir(exist_ok=True)
 
     meme_bin = shutil.which("meme")
+    if not meme_bin and not any(runs_dir.glob("*/meme.txt")):
+        raise RuntimeError("Required binary 'meme' not found in PATH")
     tasks = []
     for cond in conditions:
         cid = cond["id"]

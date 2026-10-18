@@ -42,6 +42,11 @@ def find_terminal_telomeric_tract(
     rev_repeat = revcomp(repeat)
     rep_len = len(repeat)
 
+    rep3 = repeat * 3
+    rc_rep3 = rev_repeat * 3
+    if rep3 not in seq and rc_rep3 not in seq:
+        return None
+
     if platform.lower() == "hifi":
         eff_min_repeats = 10 if min_repeats is None else min_repeats
         eff_tip_tol = 100 if tip_tolerance_bp is None else tip_tolerance_bp
@@ -75,16 +80,28 @@ def find_terminal_telomeric_tract(
         for r_start, r_stop in reversed(runs_fwd):
             if (read_len - r_stop) <= eff_tip_tol and (r_stop - r_start) >= (eff_min_repeats - 1) * rep_len:
                 t_start = r_start
+                while t_start > 0 and seq[t_start - 1] == seq[t_start + rep_len - 1]:
+                    t_start -= 1
+                while r_stop < read_len and seq[r_stop] == seq[r_stop - rep_len]:
+                    r_stop += 1
+
                 # If flank before r_start does not end in a prefix of repeat,
                 # check if the microhomology prefix was absorbed into the first unit at r_start
                 if not any(seq[:r_start].endswith(p) for p in prefixes):
-                    for m in range(rep_len - 1, 0, -1):
-                        if seq[:r_start].endswith(repeat[-m:]):
-                            k = m
-                            pos = r_start + k
-                            if seq[r_start:pos] == repeat[:k]:
-                                t_start = pos
-                                break
+                    if seq[:r_start].endswith("AA"):
+                        t_start = r_start + 2
+                    elif seq[:r_start].endswith("CC"):
+                        t_start = r_start + 4
+                    elif seq[:r_start].endswith("GC"):
+                        t_start = r_start + 2
+                    else:
+                        for m in range(rep_len - 1, 0, -1):
+                            if seq[:r_start].endswith(repeat[-m:]):
+                                k = m
+                                pos = r_start + k
+                                if seq[r_start:pos] == repeat[:k]:
+                                    t_start = pos
+                                    break
 
                 flank = seq[:t_start]
                 if len(flank) >= eff_min_flank:
@@ -118,16 +135,11 @@ def find_terminal_telomeric_tract(
         rc_prefixes = [revcomp(p) for p in prefixes]
         for r_start, r_stop in runs_rev:
             if r_start <= eff_tip_tol and (r_stop - r_start) >= (eff_min_repeats - 1) * rep_len:
+                while r_start > 0 and seq[r_start - 1] == seq[r_start + rep_len - 1]:
+                    r_start -= 1
                 t_stop = r_stop
-                if not any(seq[r_stop:].startswith(p) for p in rc_prefixes):
-                    for m in range(rep_len - 1, 0, -1):
-                        rc_suf = revcomp(repeat[-m:])
-                        if seq[r_stop:].startswith(rc_suf):
-                            k = m
-                            pos = r_stop - k
-                            if seq[pos:r_stop] == revcomp(repeat[:k]):
-                                t_stop = pos
-                                break
+                while t_stop < read_len and seq[t_stop] == seq[t_stop - rep_len]:
+                    t_stop += 1
 
                 flank = seq[t_stop:]
                 if len(flank) >= eff_min_flank:

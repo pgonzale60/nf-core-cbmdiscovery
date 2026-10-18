@@ -114,7 +114,7 @@ def deconvolve_and_census(
         coherence = loc.get("coherence", 0.0)
         c_telo = loc.get("c_telo", 0)
 
-        if c_germ >= min_germ_reads and coherence >= min_coherence and c_telo > 0:
+        if c_germ >= min_germ_reads and coherence >= min_coherence:
             loc["classification"] = "PDE_BREAK_SITE"
         else:
             loc["classification"] = "CANDIDATE_TELOMERE"
