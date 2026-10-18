@@ -93,6 +93,14 @@ class TestBaitGermlineJunctions(unittest.TestCase):
         self.assertEqual(p_germ["branch"], "germline")
         self.assertEqual(p_germ["germline_ext"], self.germ_flank[:80])
 
+        # Telomeric read with telomerase addition wobble (non-canonical overhang before repeats)
+        wobble_read = self.anchor_seq[-60:] + "ACTTGGCTAC" + (self.repeat * 8)
+        p_wobble = partition_baited_read(
+            self.anchor_seq, wobble_read, repeat=self.repeat
+        )
+        self.assertIsNotNone(p_wobble)
+        self.assertEqual(p_wobble["branch"], "telo")
+
     def test_reconstruction_and_microhomology(self):
         # Multiple reads with small sequencing noise
         exts = [
@@ -103,6 +111,13 @@ class TestBaitGermlineJunctions(unittest.TestCase):
         cons, coherence = reconstruct_germline_consensus(exts, max_len=150)
         self.assertEqual(cons, self.germ_flank)
         self.assertGreaterEqual(coherence, 0.95)
+
+        # 1-bp homopolymer indel shift tolerance (HiFi noise)
+        indel_ext = self.germ_flank[:25] + self.germ_flank[26:]
+        _c_indel, coh_indel = reconstruct_germline_consensus(
+            [self.germ_flank, indel_ext, self.germ_flank], max_len=150
+        )
+        self.assertGreaterEqual(coh_indel, 0.95)
 
         mh_len, mh_motif = annotate_microhomology(cons, repeat=self.repeat)
         self.assertEqual(mh_len, 4)
@@ -121,7 +136,6 @@ class TestBaitGermlineJunctions(unittest.TestCase):
             "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
         ]
         _cons, coherence = reconstruct_germline_consensus(exts, max_len=40)
-        # Coherence will be ~0.33, well below 0.85
         self.assertLess(coherence, 0.85)
 
         loci = [{
@@ -134,40 +148,29 @@ class TestBaitGermlineJunctions(unittest.TestCase):
         classified, _census = deconvolve_and_census(
             loci, min_germ_reads=2, min_coherence=0.85
         )
-        # Should NOT be classified as PDE_BREAK_SITE
         self.assertNotEqual(classified[0]["classification"], "PDE_BREAK_SITE")
 
     def test_deconvolve_and_census(self):
         loci = [
-            # Authentic PDE break site
-            {
-                "anchor_id": "a_break",
-                "c_telo": 24,
-                "c_germ": 6,
-                "coherence": 0.98,
-                "break_window": "ACGT" * 75,
-            },
-            # Germline native telomere (low telo, 0 germ)
-            {
-                "anchor_id": "a_native",
-                "c_telo": 5,
-                "c_germ": 0,
-                "coherence": 0.0,
-                "break_window": "",
-            },
+            {"anchor_id": "a_break", "c_telo": 24, "c_germ": 6, "coherence": 0.98, "break_window": "ACGT" * 75},
+            {"anchor_id": "a_soft", "c_telo": 39, "c_germ": 18, "coherence": 0.78, "break_window": "TGCA" * 75},
+            {"anchor_id": "a_native", "c_telo": 5, "c_germ": 0, "coherence": 0.0, "break_window": ""},
+            {"anchor_id": "a_low_coh", "c_telo": 20, "c_germ": 4, "coherence": 0.45, "break_window": ""},
         ]
         deduped = deduplicate_break_windows(loci)
         classified, census = deconvolve_and_census(deduped, min_germ_reads=2)
 
         class_map = {l["anchor_id"]: l["classification"] for l in classified}
         self.assertEqual(class_map["a_break"], "PDE_BREAK_SITE")
+        self.assertEqual(class_map["a_soft"], "PDE_BREAK_SITE")
         self.assertEqual(class_map["a_native"], "GERMLINE_NATIVE_TELOMERE")
+        self.assertEqual(class_map["a_low_coh"], "LOW_COHERENCE_JUNCTION")
 
-        self.assertEqual(census["n_breaks"], 1)
+        self.assertEqual(census["n_breaks"], 2)
         self.assertEqual(census["n_germ_telo"], 1)
-        self.assertEqual(census["median_c_soma"], 24.0)
-        self.assertEqual(census["median_c_germ"], 6.0)
-        self.assertAlmostEqual(census["germline_fraction"], 0.20, places=2)
+        self.assertEqual(census["median_c_soma"], 31.5)
+        self.assertEqual(census["median_c_germ"], 12.0)
+        self.assertAlmostEqual(census["germline_fraction"], 0.28, places=2)
 
     def test_length_shifted_break_window_deduplication_and_count_merging(self):
         soma_150 = self.anchor_seq

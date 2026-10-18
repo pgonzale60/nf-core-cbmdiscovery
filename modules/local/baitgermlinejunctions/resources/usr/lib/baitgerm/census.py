@@ -187,7 +187,16 @@ def deconvolve_and_census(
         coherence = loc.get("coherence", 0.0)
         c_telo = loc.get("c_telo", 0)
 
+        # High-confidence break site classification:
+        # Standard: c_germ >= min_germ_reads and coherence >= min_coherence
+        # Soft boundary: strong dual-branch support (c_telo >= 10, c_germ >= 5) with coherence >= 0.65
+        is_pde = False
         if c_germ >= min_germ_reads and coherence >= min_coherence:
+            is_pde = True
+        elif c_telo >= 10 and c_germ >= min(5, min_germ_reads) and coherence >= 0.65:
+            is_pde = True
+
+        if is_pde:
             loc["classification"] = "PDE_BREAK_SITE"
         else:
             loc["classification"] = "CANDIDATE_TELOMERE"
@@ -219,7 +228,12 @@ def deconvolve_and_census(
         if loc["classification"] == "PDE_BREAK_SITE":
             continue
         c_telo = loc.get("c_telo", 0)
-        if c_telo <= cutoff:
+        c_germ = loc.get("c_germ", 0)
+
+        # Native telomeres have no germline read-through; loci with read-through are low-coherence junctions
+        if c_germ >= min_germ_reads:
+            loc["classification"] = "LOW_COHERENCE_JUNCTION"
+        elif c_telo <= cutoff:
             loc["classification"] = "GERMLINE_NATIVE_TELOMERE"
         else:
             loc["classification"] = "SHARED_NATIVE_TELOMERE"

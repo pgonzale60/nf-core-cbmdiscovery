@@ -51,28 +51,41 @@ def find_probe_alignment(
 
 
 def is_telomeric_extension(
-    flank: str, repeat: str = "TTAGGC", min_prefix_check: int = 24
+    flank: str, repeat: str = "TTAGGC", scan_window: int = 60
 ) -> bool:
-    """Determine whether a sequence extension consists predominantly of telomeric repeats."""
+    """Determine whether a sequence extension consists predominantly of telomeric repeats.
+
+    Handles telomerase addition wobble and microhomology overhangs (5-15 bp) before
+    the canonical repeat array by scanning for tandem repeats within the first 60 bp.
+    """
     if not flank:
         return False
 
     perms = get_cyclic_permutations(repeat)
-    check_len = min(len(flank), min_prefix_check)
-    sub = flank[:check_len]
+    rep_len = len(repeat)
 
+    # 1. Tandem repeat scan: check for >= 2 consecutive repeats anywhere in first scan_window bp
+    scan_sub = flank[:scan_window]
+    for p in perms:
+        if (p * 2) in scan_sub:
+            return True
+
+    # 2. Windowed telomeric density check across prefix (up to 48 bp)
+    check_len = min(len(flank), 48)
+    if check_len < rep_len:
+        return False
+
+    sub = flank[:check_len]
     telo_cov = 0
     i = 0
-    rep_len = len(repeat)
     while i <= len(sub) - rep_len:
-        km = sub[i : i + rep_len]
-        if km in perms:
+        if sub[i : i + rep_len] in perms:
             telo_cov += rep_len
             i += rep_len
         else:
             i += 1
 
-    return (telo_cov / len(sub)) >= 0.60
+    return (telo_cov / len(sub)) >= 0.50
 
 
 def partition_baited_read(

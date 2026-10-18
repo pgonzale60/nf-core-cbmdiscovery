@@ -21,6 +21,48 @@ def revcomp(seq: str) -> str:
     return seq.translate(tr)[::-1]
 
 
+def banded_alignment_identity(
+    query: str, target: str, max_band: int = 3
+) -> float:
+    """Compute alignment identity allowing small indels (banded semi-global alignment).
+
+    Tolerates 1-2 bp homopolymer indels common in long reads (PacBio HiFi).
+    """
+    m = len(query)
+    n = len(target)
+    if m == 0 or n == 0:
+        return 0.0
+
+    min_l = min(m, n)
+    raw_matches = sum(1 for i in range(min_l) if query[i] == target[i])
+    if raw_matches / min_l >= 0.95:
+        return raw_matches / min_l
+
+    dp = [0] * (n + 1)
+    for i in range(1, m + 1):
+        prev = dp[:]
+        j_start = max(1, i - max_band)
+        j_end = min(n, i + max_band)
+        for j in range(j_start, j_end + 1):
+            match = 1 if query[i - 1] == target[j - 1] else 0
+            best = prev[j - 1] + match
+            if j > j_start and dp[j - 1] > best:
+                best = dp[j - 1]
+            if prev[j] > best:
+                best = prev[j]
+            dp[j] = best
+
+    end_j_start = max(1, m - max_band)
+    end_j_end = min(n, m + max_band)
+    best_matches = (
+        max(dp[j] for j in range(end_j_start, end_j_end + 1))
+        if end_j_end >= end_j_start
+        else dp[-1]
+    )
+    align_len = max(m, n)
+    return best_matches / align_len if align_len > 0 else 0.0
+
+
 def reconstruct_germline_consensus(
     germline_extensions: list[str],
     max_len: int = 150,
@@ -194,19 +236,21 @@ def reconstruct_germline_consensus(
     if not consensus_seq:
         return "", 0.0
 
-    # Calculate Branch Coherence against consensus_seq
-    total_aligned = 0
-    total_matching = 0
+    # Calculate Branch Coherence against consensus_seq with indel tolerance
     cons_len = len(consensus_seq)
+    identities = []
 
     for ext in germline_extensions:
         overlap = min(len(ext), cons_len)
-        for i in range(overlap):
-            total_aligned += 1
-            if ext[i] == consensus_seq[i]:
-                total_matching += 1
+        if overlap == 0:
+            continue
+        identities.append(
+            banded_alignment_identity(
+                ext[:overlap], consensus_seq[:overlap], max_band=3
+            )
+        )
 
-    coherence = total_matching / total_aligned if total_aligned > 0 else 0.0
+    coherence = sum(identities) / len(identities) if identities else 0.0
     return consensus_seq[:max_len], round(coherence, 4)
 
 
