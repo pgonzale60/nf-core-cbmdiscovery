@@ -202,6 +202,11 @@ def validateInputSamplesheet(input) {
         error("Please check input samplesheet -> Multiple runs of a sample must be of the same datatype i.e. single-end or paired-end: ${metas[0].id}")
     }
 
+    // Check that Illumina samples are paired-end
+    if (metas[0].platform?.toLowerCase() == 'illumina' && metas[0].single_end) {
+        error("Please check input samplesheet -> Sample '${metas[0].id}' has platform 'illumina' but is single-end (missing reads_2). Reference-free CBM discovery requires paired-end Illumina sequencing (reads_1 and reads_2) with library insert size >300 bp to bridge the 300 bp Y-junction across somatic anchors and eliminated germline flanks. For single-end data, long-read sequencing (platform: 'hifi') is required.")
+    }
+
     return [ metas[0], fastqs ]
 }
 //

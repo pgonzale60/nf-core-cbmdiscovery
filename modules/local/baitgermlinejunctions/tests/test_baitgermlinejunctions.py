@@ -316,6 +316,38 @@ class TestBaitGermlineJunctions(unittest.TestCase):
             self.assertEqual(seq[:150], soma)
             self.assertEqual(seq[150:], germ_210[:150])
 
+    def test_cli_illumina_single_end_rejected(self):
+        import subprocess
+        import sys
+        import tempfile
+
+        cli_script = (
+            pathlib.Path(__file__).parent.parent
+            / "resources"
+            / "usr"
+            / "bin"
+            / "cbm_bait_germline_junctions.py"
+        ).resolve()
+
+        with tempfile.TemporaryDirectory() as td:
+            tdp = pathlib.Path(td)
+            fa = tdp / "cands.fa"
+            fa.write_text(">cand1\n" + self.anchor_seq + "\n")
+            r1 = tdp / "r1.fq"
+            r1.write_text("@r1\nACGT\n+\nIIII\n")
+
+            cmd = [
+                sys.executable,
+                str(cli_script),
+                "--candidate-anchors", str(fa),
+                "--reads-1", str(r1),
+                "--platform", "illumina",
+            ]
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            self.assertNotEqual(res.returncode, 0)
+            self.assertIn("requires paired-end reads", res.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
+

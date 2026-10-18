@@ -94,6 +94,11 @@ def parse_args():
 
 def main():
     args = parse_args()
+    if args.platform == "illumina" and not args.reads_2:
+        sys.exit(
+            "Error: Platform 'illumina' requires paired-end reads (--reads-2) for 300 bp Y-junction reconstruction. "
+            "Single-end short reads cannot bridge the germline flank without paired mates."
+        )
     anchors = load_candidate_anchors(args.candidate_anchors)
     if not anchors:
         print(f"Warning: No anchors found in {args.candidate_anchors}")
