@@ -144,6 +144,8 @@ workflow CBMDISCOVERY {
     )
 
     emit:
+    telomeric_reads_fastq = FISHTELOMERICANCHORS.out.telomeric_reads_fastq
+    baited_reads_fastq    = BAITGERMLINEJUNCTIONS.out.baited_reads_fastq
     candidate_anchors     = FISHTELOMERICANCHORS.out.candidate_anchors
     break_windows_fasta   = BAITGERMLINEJUNCTIONS.out.break_windows_fasta
     junction_catalog      = BAITGERMLINEJUNCTIONS.out.junction_catalog

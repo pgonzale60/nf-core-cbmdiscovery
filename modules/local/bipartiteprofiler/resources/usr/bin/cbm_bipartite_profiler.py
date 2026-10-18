@@ -3,6 +3,7 @@
 
 import argparse
 from collections import defaultdict
+import json
 import os
 from pathlib import Path
 import re
@@ -115,42 +116,56 @@ def build_higher_order_markov_bg(fasta_file: str | Path, out_bg: Path) -> Path:
     return out_bg
 
 
-def extract_motif2_from_meme(
-    meme_txt_path: Path, output_aux_meme: Path
+def revcomp(seq: str) -> str:
+    tr = str.maketrans("ACGTNacgtn", "TGCANtgcan")
+    return seq.translate(tr)[::-1]
+
+
+def is_core_echo(aux_consensus: str, core_consensus: str) -> bool:
+    """Return True if aux_consensus is a substring/superstring of core_consensus or its revcomp."""
+    if not aux_consensus or not core_consensus:
+        return False
+    a = aux_consensus.upper()
+    c = core_consensus.upper()
+    rc_c = revcomp(c)
+    return (a in c) or (c in a) or (a in rc_c) or (rc_c in a)
+
+
+def extract_motif_n_from_meme(
+    meme_txt_path: Path, motif_num: int, output_aux_meme: Path
 ) -> dict[str, Any] | None:
-    """Extract secondary motif (Motif 2) from multi-motif MEME text output."""
+    """Extract secondary or tertiary motif from multi-motif MEME text output."""
     if not meme_txt_path.exists():
         return None
     text = meme_txt_path.read_text(encoding="utf-8")
-    # Search for MOTIF 2 or Motif 2
-    m_split = re.split(r"\n(?=MOTIF\s+2|\bMEME-2\b)", text)
+    m_split = re.split(rf"\n(?=MOTIF\s+{motif_num}\b|\bMEME-{motif_num}\b)", text)
     if len(m_split) < 2:
         return None
 
-    motif2_section = m_split[1]
-    # Header up to first MOTIF
+    motif_section = m_split[1]
     header = text.split("MOTIF")[0].strip() + "\n\n"
-    # End of motif 2 section (before MOTIF 3 if present)
-    m3_split = re.split(r"\n(?=MOTIF\s+3|\bMEME-3\b)", motif2_section)
-    motif2_content = m3_split[0]
+    next_num = motif_num + 1
+    m_next_split = re.split(
+        rf"\n(?=MOTIF\s+{next_num}\b|\bMEME-{next_num}\b)", motif_section
+    )
+    motif_content = m_next_split[0]
 
-    output_aux_meme.write_text(header + motif2_content, encoding="utf-8")
+    output_aux_meme.write_text(header + motif_content, encoding="utf-8")
 
-    # Extract metrics
-    m_e = re.search(r"E=\s*(\S+)", motif2_content)
+    m_e = re.search(r"E=\s*(\S+)", motif_content)
     evalue = float(m_e.group(1)) if m_e else 1.0
 
-    m_w = re.search(r"w=\s*(\d+)", motif2_content)
+    m_w = re.search(r"w=\s*(\d+)", motif_content)
     width = int(m_w.group(1)) if m_w else 8
 
-    m_nsites = re.search(r"nsites=\s*(\d+)", motif2_content)
+    m_nsites = re.search(r"nsites=\s*(\d+)", motif_content)
     nsites = int(m_nsites.group(1)) if m_nsites else 0
 
-    cons_m = re.search(r"Multilevel\s+([A-Za-z]+)", motif2_content)
+    cons_m = re.search(r"Multilevel\s+([A-Za-z]+)", motif_content)
     consensus = cons_m.group(1).upper() if cons_m else ""
 
     return {
-        "id": "MEME_soft_erasure_motif_2",
+        "id": f"MEME_soft_erasure_motif_{motif_num}",
         "consensus": consensus,
         "width": width,
         "nsites": nsites,
@@ -246,17 +261,34 @@ def main():
         threads=args.threads,
     )
 
-    # Compare soft-erasure Motif 2 vs masked-grid auxiliary motif
-    soft_motif2 = extract_motif2_from_meme(
-        meme_out_dir / "meme.txt", work_dir / "soft_motif2.meme"
+    core_consensus = ""
+    if args.core_metrics_json and os.path.exists(args.core_metrics_json):
+        try:
+            with open(args.core_metrics_json, encoding="utf-8") as f_cm:
+                core_consensus = json.load(f_cm).get("consensus", "")
+        except Exception:
+            pass
+
+    # Compare soft-erasure Motif 2 / Motif 3 vs masked-grid auxiliary motif
+    candidate_soft = None
+    m2 = extract_motif_n_from_meme(
+        meme_out_dir / "meme.txt", 2, work_dir / "soft_motif2.meme"
     )
+    if m2 and not is_core_echo(m2["consensus"], core_consensus):
+        candidate_soft = m2
+    else:
+        m3 = extract_motif_n_from_meme(
+            meme_out_dir / "meme.txt", 3, work_dir / "soft_motif3.meme"
+        )
+        if m3 and not is_core_echo(m3["consensus"], core_consensus):
+            candidate_soft = m3
 
     best_aux = None
-    if soft_motif2 and (
-        not best_aux_grid or soft_motif2["evalue"] <= best_aux_grid["evalue"]
+    if candidate_soft and (
+        not best_aux_grid or candidate_soft["evalue"] <= best_aux_grid["evalue"]
     ):
-        best_aux = soft_motif2
-        shutil.copy(work_dir / "soft_motif2.meme", args.output_aux_meme)
+        best_aux = candidate_soft
+        shutil.copy(candidate_soft["meme_txt_path"], args.output_aux_meme)
     elif best_aux_grid and best_aux_grid.get("meme_txt_path"):
         best_aux = best_aux_grid
         shutil.copy(best_aux["meme_txt_path"], args.output_aux_meme)

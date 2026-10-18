@@ -112,9 +112,10 @@ def reconstruct_germline_consensus(
                         if len(anchor_seq) >= 150
                         else anchor_seq
                     )
-                    f_fq.write(
-                        f"@anchor_seed\n{a_seed}\n+\n{'I' * len(a_seed)}\n"
-                    )
+                    for s_idx in range(3):
+                        f_fq.write(
+                            f"@anchor_seed_{s_idx}\n{a_seed}\n+\n{'I' * len(a_seed)}\n"
+                        )
                 for r_idx, r_seq in enumerate(reads_to_assemble):
                     f_fq.write(
                         f"@read_{r_idx}\n{r_seq}\n+\n{'I' * len(r_seq)}\n"
@@ -122,8 +123,8 @@ def reconstruct_germline_consensus(
 
             unitigs: list[str] = []
             for fml_args in [
+                ["-e", "-1", "-l", "20", "-c", "1,1", "-O"],
                 ["-e", "21", "-l", "30", "-c", "2", "-t", "1"],
-                ["-e", "-1", "-l", "25", "-c", "1,1", "-O"],
             ]:
                 res = subprocess.run(
                     [fml_bin] + fml_args + [str(fq_path)],
@@ -139,7 +140,7 @@ def reconstruct_germline_consensus(
                         break
 
             if anchor_seq:
-                for p_len in [40, 30, 20]:
+                for p_len in [50, 40, 30, 20]:
                     if len(anchor_seq) < p_len:
                         continue
                     probe = anchor_seq[-p_len:].upper()
@@ -183,37 +184,6 @@ def reconstruct_germline_consensus(
             top_base = Counter(bases).most_common(1)[0][0]
             chars.append(top_base)
         consensus_seq = "".join(chars)
-
-    # Mate extension if consensus is still shorter than max_len
-    if all_mates and len(consensus_seq) < max_len:
-        extended = True
-        used_mates: set[int] = set()
-        while extended and len(consensus_seq) < max_len:
-            extended = False
-            for m_idx, mate in enumerate(all_mates):
-                if m_idx in used_mates:
-                    continue
-                matched = False
-                for m in (mate, revcomp(mate)):
-                    for k in (25, 20):
-                        if len(consensus_seq) < k:
-                            continue
-                        seed = consensus_seq[-k:]
-                        idx = m.find(seed)
-                        if idx >= 0:
-                            ext_part = m[idx + k :]
-                            if ext_part:
-                                consensus_seq += ext_part
-                                if len(consensus_seq) > max_len:
-                                    consensus_seq = consensus_seq[:max_len]
-                                extended = True
-                                matched = True
-                                used_mates.add(m_idx)
-                                break
-                    if matched:
-                        break
-                if extended:
-                    break
 
     if not consensus_seq:
         return "", 0.0

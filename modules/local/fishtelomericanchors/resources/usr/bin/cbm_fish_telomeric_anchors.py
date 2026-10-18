@@ -57,6 +57,12 @@ def parse_args():
         help="Minimum reads per anchor cluster",
     )
     parser.add_argument(
+        "--min-identity",
+        type=float,
+        default=0.98,
+        help="Minimum sequence identity for clustering (default: 0.98)",
+    )
+    parser.add_argument(
         "--threads",
         type=int,
         default=1,
@@ -106,7 +112,7 @@ def main():
 
     clusters = cluster_anchors(
         fished_observations,
-        min_identity=0.97,
+        min_identity=args.min_identity,
         min_cluster_size=args.min_cluster_size,
         threads=args.threads,
     )

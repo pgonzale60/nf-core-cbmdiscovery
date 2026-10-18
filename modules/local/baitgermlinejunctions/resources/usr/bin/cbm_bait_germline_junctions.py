@@ -13,10 +13,9 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 from baitgerm.baiter import (  # noqa: E402
-    bait_reads,
     build_kmer_bait_index,
     load_candidate_anchors,
-    recruit_extension_mates,
+    stream_paired_fastq_records,
 )
 from baitgerm.census import (  # noqa: E402
     deconvolve_and_census,
@@ -102,32 +101,45 @@ def main():
     bait_k = min(args.kmer_size, 20)
     bait_index = build_kmer_bait_index(anchors, kmer_size=bait_k)
 
+    def get_hits(read_seq: str, bait_idx: dict[str, list[str]], k_sz: int) -> set[str]:
+        hits = set()
+        if len(read_seq) < k_sz:
+            return hits
+        for i in range(len(read_seq) - k_sz + 1):
+            km = read_seq[i : i + k_sz]
+            if km in bait_idx:
+                hits.update(bait_idx[km])
+        return hits
+
     # Track extensions, local reads, and counts per anchor
     telo_counts = {a_id: 0 for a_id in anchors}
     germline_extensions = {a_id: [] for a_id in anchors}
     local_reads: dict[str, list[str]] = {a_id: [] for a_id in anchors}
 
-    for hit in bait_reads(
-        args.reads_1, args.reads_2, bait_index, kmer_size=bait_k
-    ):
-        a_id = hit["anchor_id"]
-        a_seq = anchors[a_id]
-        s = hit["seq"]
-        p_res = partition_baited_read(
-            a_seq, s, repeat=args.telomere_repeat
-        )
-        if p_res:
-            if p_res["branch"] == "telo":
+    for r1_tuple, r2_tuple in stream_paired_fastq_records(args.reads_1, args.reads_2):
+        s1 = r1_tuple[1] if r1_tuple else None
+        s2 = r2_tuple[1] if r2_tuple else None
+        hits_1 = get_hits(s1, bait_index, bait_k) if s1 else set()
+        hits_2 = get_hits(s2, bait_index, bait_k) if s2 else set()
+        all_hits = hits_1 | hits_2
+
+        for a_id in all_hits:
+            a_seq = anchors[a_id]
+            p1 = partition_baited_read(a_seq, s1, repeat=args.telomere_repeat) if s1 else None
+            p2 = partition_baited_read(a_seq, s2, repeat=args.telomere_repeat) if s2 else None
+
+            if (p1 and p1["branch"] == "telo") or (p2 and p2["branch"] == "telo"):
                 telo_counts[a_id] += 1
-            elif p_res["branch"] == "germline":
-                germline_extensions[a_id].append(p_res["germline_ext"])
-                local_reads[a_id].append(s)
-    fastq_files = [args.reads_1]
-    if args.reads_2:
-        fastq_files.append(args.reads_2)
-    mate_reads = recruit_extension_mates(
-        fastq_files, germline_extensions, kmer_size=bait_k
-    )
+
+            if p1 and p1["branch"] == "germline":
+                germline_extensions[a_id].append(p1["germline_ext"])
+                local_reads[a_id].append(s1)
+                if s2:
+                    local_reads[a_id].append(s2)
+            elif p2 and p2["branch"] == "germline":
+                germline_extensions[a_id].append(p2["germline_ext"])
+                local_reads[a_id].append(s2)
+                local_reads[a_id].append(s1)
 
     loci = []
     for a_id, a_seq in anchors.items():
@@ -140,13 +152,11 @@ def main():
         break_window = ""
 
         if c_germ >= args.min_germ_reads:
-            all_mates = local_reads.get(a_id, []) + mate_reads.get(a_id, [])
             germ_cons, coherence = reconstruct_germline_consensus(
                 germline_extensions[a_id],
                 max_len=150,
                 anchor_seq=a_seq,
-                local_reads=all_mates,
-                mate_reads=mate_reads.get(a_id, []),
+                local_reads=local_reads.get(a_id, []),
                 threads=args.threads,
             )
             mh_len, mh_motif = annotate_microhomology(

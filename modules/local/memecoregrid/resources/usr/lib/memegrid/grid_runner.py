@@ -33,15 +33,10 @@ def generate_grid_conditions(radii: list[int] | None = None) -> list[dict[str, A
             for revcomp in [True, False]:
                 for w in WIDTH_RANGES:
                     strand_lbl = "revcomp" if revcomp else "fwd"
-                    cid = f"R{r}_{mod}_{strand_lbl}_{w['label']}"
                     conditions.append({
-                        "id": cid,
-                        "cond_idx": idx,
-                        "radius": r,
-                        "mod": mod,
-                        "revcomp": revcomp,
-                        "w_args": w["args"],
-                        "w_label": w["label"],
+                        "id": f"R{r}_{mod}_{strand_lbl}_{w['label']}",
+                        "cond_idx": idx, "radius": r, "mod": mod,
+                        "revcomp": revcomp, "w_args": w["args"], "w_label": w["label"],
                     })
                     idx += 1
     return conditions
@@ -75,9 +70,9 @@ def build_distal_flank_markov_backgrounds(
                 total_len += len(right_arm)
 
     if total_len >= 3600:
-        candidate_orders = [1, 2, 3]
+        candidate_orders = [2, 3]
     elif total_len >= 1500:
-        candidate_orders = [0, 1, 2]
+        candidate_orders = [1, 2]
     else:
         candidate_orders = [0, 1]
 
@@ -122,6 +117,8 @@ def _run_single_condition(
         ] + cond["w_args"]
         if cond.get("bfile"):
             cmd.extend(["-bfile", cond["bfile"]])
+        if cond.get("pal"):
+            cmd.append("-pal")
         if cond["revcomp"]:
             cmd.append("-revcomp")
 
@@ -144,6 +141,7 @@ def _run_single_condition(
             metrics["bfile"] = cond.get("bfile", "")
             metrics["mod"] = cond["mod"]
             metrics["revcomp"] = cond["revcomp"]
+            metrics["pal"] = cond.get("pal", False)
             metrics["w_label"] = cond["w_label"]
             metrics["meme_txt_path"] = str(meme_txt)
             return metrics
@@ -223,16 +221,10 @@ def run_meme_grid(
     phase1_conds = []
     for r in selected_radii:
         for m in candidate_orders:
-            cid = f"P1_R{r}_m{m}_zoops_revcomp_w8_30"
             phase1_conds.append({
-                "id": cid,
-                "phase": 1,
-                "radius": r,
-                "markov_order": m,
-                "bfile": bg_files[m],
-                "mod": "zoops",
-                "revcomp": True,
-                "w_args": ["-minw", "8", "-maxw", "30"],
+                "id": f"P1_R{r}_m{m}_zoops_revcomp_w8_30", "phase": 1,
+                "radius": r, "markov_order": m, "bfile": bg_files[m],
+                "mod": "zoops", "revcomp": True, "w_args": ["-minw", "8", "-maxw", "30"],
                 "w_label": "w8_30",
             })
     p1_results = execute_batch(phase1_conds)
@@ -250,17 +242,11 @@ def run_meme_grid(
     for w in WIDTH_RANGES:
         for revcomp in [True, False]:
             st_lbl = "revcomp" if revcomp else "fwd"
-            cid = f"P2_R{best_radius}_m{best_order}_zoops_{st_lbl}_{w['label']}"
             phase2_conds.append({
-                "id": cid,
-                "phase": 2,
-                "radius": best_radius,
-                "markov_order": best_order,
-                "bfile": bg_files[best_order],
-                "mod": "zoops",
-                "revcomp": revcomp,
-                "w_args": w["args"],
-                "w_label": w["label"],
+                "id": f"P2_R{best_radius}_m{best_order}_zoops_{st_lbl}_{w['label']}",
+                "phase": 2, "radius": best_radius, "markov_order": best_order,
+                "bfile": bg_files[best_order], "mod": "zoops", "revcomp": revcomp,
+                "w_args": w["args"], "w_label": w["label"],
             })
     p2_results = execute_batch(phase2_conds)
     all_results.extend(p2_results)
@@ -277,20 +263,20 @@ def run_meme_grid(
 
     # Phase 3: Site Distribution Model & Palindrome Check
     phase3_conds = []
+    st_lbl = "revcomp" if best_revcomp else "fwd"
     for mod in ["zoops", "oops", "anr"]:
-        st_lbl = "revcomp" if best_revcomp else "fwd"
-        cid = f"P3_R{best_radius}_m{best_order}_{mod}_{st_lbl}_{best_w_label}"
         phase3_conds.append({
-            "id": cid,
-            "phase": 3,
-            "radius": best_radius,
-            "markov_order": best_order,
-            "bfile": bg_files[best_order],
-            "mod": mod,
-            "revcomp": best_revcomp,
-            "w_args": best_w_args,
-            "w_label": best_w_label,
+            "id": f"P3_R{best_radius}_m{best_order}_{mod}_{st_lbl}_{best_w_label}",
+            "phase": 3, "radius": best_radius, "markov_order": best_order,
+            "bfile": bg_files[best_order], "mod": mod, "revcomp": best_revcomp,
+            "pal": False, "w_args": best_w_args, "w_label": best_w_label,
         })
+    phase3_conds.append({
+        "id": f"P3_R{best_radius}_m{best_order}_zoops_{st_lbl}_pal_{best_w_label}",
+        "phase": 3, "radius": best_radius, "markov_order": best_order,
+        "bfile": bg_files[best_order], "mod": "zoops", "revcomp": best_revcomp,
+        "pal": True, "w_args": best_w_args, "w_label": best_w_label,
+    })
     p3_results = execute_batch(phase3_conds)
     all_results.extend(p3_results)
 
@@ -334,7 +320,7 @@ def export_grid_outputs(
 
     fieldnames = [
         "phase", "condition_id", "radius", "markov_order", "mod", "revcomp",
-        "w_label", "width", "nsites", "evalue", "consensus", "total_ic",
+        "pal", "w_label", "width", "nsites", "evalue", "consensus", "total_ic",
         "mean_ic", "consensus_entropy", "occupancy", "median_offset_to_pos0",
         "positional_iqr", "composite_score",
     ]

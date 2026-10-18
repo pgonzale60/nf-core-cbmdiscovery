@@ -4,6 +4,7 @@
 import pathlib
 import sys
 import unittest
+import unittest.mock
 
 # Ensure module lib is importable
 CUR = pathlib.Path(__file__).resolve().parent
@@ -214,13 +215,17 @@ class TestBaitGermlineJunctions(unittest.TestCase):
 
         # Initial extensions from junction reads
         initial_exts = [p_a["germline_ext"], p_b["germline_ext"]]
-        cons, _coh = reconstruct_germline_consensus(
-            initial_exts, max_len=150, mate_reads=[read_c]
-        )
+        mock_raw = f"@utg0\n{germ_210}\n+\n{'I' * len(germ_210)}\n"
+        with unittest.mock.patch("subprocess.run") as mock_sub:
+            mock_sub.return_value = unittest.mock.Mock(stdout=mock_raw, returncode=0)
+            cons, _coh = reconstruct_germline_consensus(
+                initial_exts, max_len=150, mate_reads=[read_c]
+            )
         self.assertEqual(len(cons), 150)
         self.assertEqual(cons, germ_210[:150])
 
     def test_end_to_end_cli_illumina_short_prefix_and_extension(self):
+        import os
         import subprocess
         import tempfile
 
@@ -238,6 +243,14 @@ class TestBaitGermlineJunctions(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td:
             tdp = pathlib.Path(td)
+            bin_dir = tdp / "bin"
+            bin_dir.mkdir()
+            mock_fml = bin_dir / "fml-asm"
+            mock_fml.write_text(
+                f"#!/bin/sh\nprintf '@utg0\\n{soma[-50:] + germ_210}\\n+\\n{'I' * (50 + len(germ_210))}\\n'\n"
+            )
+            mock_fml.chmod(0o755)
+
             fa_cand = tdp / "candidate_anchors.fasta"
             fa_cand.write_text(f">anchor_1\n{soma}\n")
 
@@ -289,7 +302,8 @@ class TestBaitGermlineJunctions(unittest.TestCase):
                 "--output-fasta", str(out_fa),
                 "--output-census", str(out_json),
             ]
-            subprocess.run(cmd, capture_output=True, text=True, check=True)
+            env = dict(os.environ, PATH=f"{bin_dir}:{os.environ.get('PATH', '')}")
+            subprocess.run(cmd, capture_output=True, text=True, check=True, env=env)
 
             out_content = out_fa.read_text()
             lines = [

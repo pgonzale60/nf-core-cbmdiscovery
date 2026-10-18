@@ -21,7 +21,7 @@ def sequence_identity_anchored_3p(s1: str, s2: str) -> float:
 
 def cluster_anchors(
     observations: list[dict[str, Any]],
-    min_identity: float = 0.97,
+    min_identity: float = 0.98,
     min_cluster_size: int = 1,
     threads: int = 1,
 ) -> list[dict[str, Any]]:

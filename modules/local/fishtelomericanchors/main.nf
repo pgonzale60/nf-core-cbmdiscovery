@@ -4,8 +4,8 @@ process FISHTELOMERICANCHORS {
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container ?
-        'https://community.wave.seqera.io/library/bbmap_vsearch:6fca92c6c19c5c7d':
-        'community.wave.seqera.io/library/bbmap_vsearch:6fca92c6c19c5c7d' }"
+        'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/36/363cb3f920602951d1dee4e0d248eb7171b4dfd2611db3a581a480500ac25996/data':
+        'community.wave.seqera.io/library/samtools_vsearch:36d56b7ebe9ea248' }"
 
     input:
     tuple val(meta), path(reads)
@@ -29,7 +29,7 @@ process FISHTELOMERICANCHORS {
     def r2 = is_single ? "" : "${reads[1]}"
 
     """
-    # Tool: cbm_fish_telomeric_anchors.py | Script-SHA: 56ad31ef629cddb5
+    # Tool: cbm_fish_telomeric_anchors.py | Script-SHA: 6133a6e45f3a7b0d
 
     # 1. Fishing telomeric reads using bbduk.sh
     REPEAT_3X="${telomere_repeat}${telomere_repeat}${telomere_repeat}"

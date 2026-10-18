@@ -4,8 +4,8 @@ process BAITGERMLINEJUNCTIONS {
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container ?
-        'https://community.wave.seqera.io/library/bbmap_fermi-lite_vsearch:532bebfcf48a14b5':
-        'community.wave.seqera.io/library/bbmap_fermi-lite_vsearch:532bebfcf48a14b5' }"
+        'https://depot.galaxyproject.org/singularity/fermi-lite:0.1--he4a0461_7':
+        'quay.io/biocontainers/fermi-lite:0.1--he4a0461_7' }"
 
     input:
     tuple val(meta), path(candidate_anchors), path(reads)
@@ -32,7 +32,7 @@ process BAITGERMLINEJUNCTIONS {
     def r2 = is_single ? "" : "${reads[1]}"
 
     """
-    # Tool: cbm_bait_germline_junctions.py | Script-SHA: 675571978c85698f
+    # Tool: cbm_bait_germline_junctions.py | Script-SHA: f91b8eba07c565c2
 
     # 1. Extract terminal 60 bp of candidate anchors into bait FASTA
     python3 -c "
@@ -65,7 +65,7 @@ with open('${candidate_anchors}') as f_in, open('anchors_terminal_60bp.fasta', '
             hdist=1 \\
             rcomp=t \\
             minkmerhits=1 \\
-            entropy=0.5 \\
+            entropy=0.35 \\
             entropywindow=50 \\
             threads=${task.cpus} \\
             overwrite=true
@@ -83,7 +83,7 @@ with open('${candidate_anchors}') as f_in, open('anchors_terminal_60bp.fasta', '
             hdist=1 \\
             rcomp=t \\
             minkmerhits=1 \\
-            entropy=0.5 \\
+            entropy=0.35 \\
             entropywindow=50 \\
             threads=${task.cpus} \\
             overwrite=true
