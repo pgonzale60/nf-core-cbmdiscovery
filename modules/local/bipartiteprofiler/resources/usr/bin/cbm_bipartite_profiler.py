@@ -223,23 +223,25 @@ def main():
 
     # 3. Spatial Spacing Validation via SpaMo
     meme_xml = meme_out_dir / "meme.xml"
-    spamo_out_dir = work_dir / "spamo_out"
+    spamo_out_tsv = work_dir / "spamo.tsv"
     if meme_xml.exists():
-        subprocess.run(
-            [
-                "spamo",
-                "-oc",
-                str(spamo_out_dir),
-                "-range",
-                "100",
-                args.break_windows,
-                str(meme_xml),
-                str(meme_xml),
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=True,
-        )
+        with open(spamo_out_tsv, "w", encoding="utf-8") as f_spamo:
+            subprocess.run(
+                [
+                    "spamo",
+                    "-text",
+                    "-margin",
+                    "100",
+                    "-range",
+                    "100",
+                    args.break_windows,
+                    str(meme_xml),
+                    str(meme_xml),
+                ],
+                stdout=f_spamo,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
 
     # 4. Mask core motifs with N and run masked grid as complementary auxiliary search
     _masked_seqs, core_hits = mask_core_motifs(
