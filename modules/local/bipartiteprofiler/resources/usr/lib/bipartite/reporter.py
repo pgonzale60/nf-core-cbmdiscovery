@@ -69,7 +69,11 @@ def generate_cbm_discovery_report(
             f"- **Tightly Spaced (≤ 30 bp)**: `{bipartite_summary.get('pct_spacer_le30bp', 0)}%`",
             f"- **Flanking (≤ 50 bp)**: `{bipartite_summary.get('pct_spacer_le50bp', 0)}%`",
             f"- **Strand Concordance (Same Strand)**: `{bipartite_summary.get('pct_same_strand', 0)}%`",
+            f"- **Located in Retained Region (≤ Pos 0)**: `{bipartite_summary.get('pct_retained_domain', 0.0)}%`",
+            f"- **Located in Eliminated Region (> Pos 0)**: `{bipartite_summary.get('pct_eliminated_domain', 0.0)}%`",
         ])
+        if bipartite_summary.get("pct_spanning_domain", 0.0) > 0:
+            md.append(f"- **Spanning Cleavage Junction**: `{bipartite_summary.get('pct_spanning_domain')}%`")
     else:
         md.extend([
             "### Simple (Single Motif) Architecture\n",

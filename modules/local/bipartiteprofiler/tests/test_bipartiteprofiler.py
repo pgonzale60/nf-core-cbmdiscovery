@@ -82,6 +82,9 @@ class TestBipartiteProfiler(unittest.TestCase):
         self.assertEqual(summary["pct_embedded_0bp"], 50.0)
         self.assertEqual(summary["pct_spacer_le30bp"], 100.0)
         self.assertEqual(summary["pct_same_strand"], 100.0)
+        self.assertEqual(summary["pct_retained_domain"], 100.0)
+        self.assertEqual(summary["pct_eliminated_domain"], 0.0)
+        self.assertEqual(rows[0]["partner_domain"], "Retained")
 
     def test_report_generation(self):
         with tempfile.NamedTemporaryFile("w", suffix=".json") as f_census, \
@@ -102,6 +105,8 @@ class TestBipartiteProfiler(unittest.TestCase):
                 "pct_spacer_le30bp": 90.0,
                 "pct_spacer_le50bp": 100.0,
                 "pct_same_strand": 90.0,
+                "pct_retained_domain": 20.0,
+                "pct_eliminated_domain": 80.0,
             }
 
             best_aux = {
@@ -126,6 +131,8 @@ class TestBipartiteProfiler(unittest.TestCase):
             self.assertIn("TGTTCA", report_text)
             self.assertIn("WWTWATGAACA", report_text)
             self.assertIn("Median Edge-to-Edge Spacer", report_text)
+            self.assertIn("Located in Retained Region", report_text)
+            self.assertIn("Located in Eliminated Region", report_text)
 
     def test_score_auxiliary_candidate_favors_longer_palindrome_over_core_hexamer(self):
         # 11 bp imperfect palindrome (e.g. ATAGCGCTAT) across 15 sequences

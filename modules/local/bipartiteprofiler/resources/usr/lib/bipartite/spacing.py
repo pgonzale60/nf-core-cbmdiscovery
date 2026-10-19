@@ -64,6 +64,7 @@ def profile_bipartite_spacing(
                     "core_offset_to_pos0": c_dist_to_pos0,
                     "has_partner": False,
                     "partner_type": "None",
+                    "partner_domain": "None",
                     "partner_start": "",
                     "partner_stop": "",
                     "partner_strand": "",
@@ -97,6 +98,11 @@ def profile_bipartite_spacing(
                     if p_strand == "+"
                     else (p_start - pos0_coord)
                 )
+                p_domain = (
+                    "Retained"
+                    if p_stop <= pos0_coord
+                    else ("Eliminated" if p_start > pos0_coord else "Spanning")
+                )
                 rel_strand = "Same" if c_strand == p_strand else "Opposite"
                 p_type = "Auxiliary" if a_hits else "Secondary_Core"
 
@@ -111,6 +117,7 @@ def profile_bipartite_spacing(
                     "core_offset_to_pos0": c_dist_to_pos0,
                     "has_partner": True,
                     "partner_type": p_type,
+                    "partner_domain": p_domain,
                     "partner_start": p_start,
                     "partner_stop": p_stop,
                     "partner_strand": p_strand,
@@ -141,6 +148,12 @@ def profile_bipartite_spacing(
             1 for r in rows if r.get("relative_strand") == "Same"
         )
         pct_same = round(100.0 * same_count / n_paired, 1)
+        n_ret = sum(1 for r in rows if r.get("partner_domain") == "Retained")
+        n_elim = sum(1 for r in rows if r.get("partner_domain") == "Eliminated")
+        n_span = sum(1 for r in rows if r.get("partner_domain") == "Spanning")
+        pct_retained = round(100.0 * n_ret / n_paired, 1)
+        pct_eliminated = round(100.0 * n_elim / n_paired, 1)
+        pct_spanning = round(100.0 * n_span / n_paired, 1)
     else:
         med_sp = 0.0
         iqr_sp = 0.0
@@ -148,6 +161,9 @@ def profile_bipartite_spacing(
         pct_le30 = 0.0
         pct_le50 = 0.0
         pct_same = 0.0
+        pct_retained = 0.0
+        pct_eliminated = 0.0
+        pct_spanning = 0.0
 
     med_core_off = (
         float(statistics.median(core_offsets)) if core_offsets else 0.0
@@ -164,6 +180,9 @@ def profile_bipartite_spacing(
         "pct_spacer_le30bp": pct_le30,
         "pct_spacer_le50bp": pct_le50,
         "pct_same_strand": pct_same,
+        "pct_retained_domain": pct_retained,
+        "pct_eliminated_domain": pct_eliminated,
+        "pct_spanning_domain": pct_spanning,
         "median_core_offset_to_pos0": med_core_off,
         "median_partner_offset_to_pos0": med_partner_off,
     }
@@ -181,6 +200,7 @@ def write_spacing_tsv(rows: list[dict[str, Any]], output_tsv: str | Path):
         "core_offset_to_pos0",
         "has_partner",
         "partner_type",
+        "partner_domain",
         "partner_start",
         "partner_stop",
         "partner_strand",
