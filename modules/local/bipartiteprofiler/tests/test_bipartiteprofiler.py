@@ -24,6 +24,7 @@ LIB_DIR = (
 if str(LIB_DIR) not in sys.path:
     sys.path.insert(0, str(LIB_DIR))
 
+from bipartite.aux_grid import score_auxiliary_candidate  # noqa: E402
 from bipartite.masker import mask_sequences_with_hits  # noqa: E402
 from bipartite.reporter import generate_cbm_discovery_report  # noqa: E402
 from bipartite.spacing import (  # noqa: E402
@@ -125,6 +126,36 @@ class TestBipartiteProfiler(unittest.TestCase):
             self.assertIn("TGTTCA", report_text)
             self.assertIn("WWTWATGAACA", report_text)
             self.assertIn("Median Edge-to-Edge Spacer", report_text)
+
+    def test_score_auxiliary_candidate_favors_longer_palindrome_over_core_hexamer(self):
+        # 11 bp imperfect palindrome (e.g. ATAGCGCTAT) across 15 sequences
+        pal_11bp = {
+            "width": 11,
+            "nsites": 15,
+            "evalue": 1.5e-4,
+            "total_ic": 16.5,
+            "mean_ic": 1.50,
+            "consensus_entropy": 1.75,
+            "unique_sequences_hit": 15,
+            "proximal_sites_6_50bp": 15,
+        }
+        score_11bp = score_auxiliary_candidate(pal_11bp, total_sequences=15)
+
+        # 6 bp central core (AGCAGC) with higher per-column IC and multiple ANR hits
+        core_6bp = {
+            "width": 6,
+            "nsites": 22,
+            "evalue": 9.2e-6,
+            "total_ic": 10.8,
+            "mean_ic": 1.80,
+            "consensus_entropy": 1.45,
+            "unique_sequences_hit": 15,
+            "proximal_sites_6_50bp": 18,
+        }
+        score_6bp = score_auxiliary_candidate(core_6bp, total_sequences=15)
+
+        self.assertGreater(score_11bp, score_6bp)
+        self.assertGreater(score_11bp, 14.0)
 
 
 if __name__ == "__main__":

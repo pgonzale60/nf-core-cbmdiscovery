@@ -17,7 +17,11 @@ _LIB_DIR = Path(__file__).resolve().parent.parent / "lib"
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
-from bipartite.aux_grid import run_auxiliary_grid  # noqa: E402
+from bipartite.aux_grid import (  # noqa: E402
+    parse_aux_meme_results,
+    run_auxiliary_grid,
+    score_auxiliary_candidate,
+)
 from bipartite.masker import (  # noqa: E402
     load_fasta_dict,
     mask_core_motifs,
@@ -34,53 +38,17 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Soft-erasure multi-motif discovery, SpaMo spacing validation, and bipartite profiler"
     )
-    parser.add_argument(
-        "--break-windows",
-        required=True,
-        help="Path to break_windows_300bp.fasta",
-    )
-    parser.add_argument(
-        "--core-meme", required=True, help="Path to best_core_motif.meme"
-    )
-    parser.add_argument(
-        "--census-json",
-        required=True,
-        help="Path to coverage_and_chromosome_census.json",
-    )
-    parser.add_argument(
-        "--core-metrics-json",
-        required=True,
-        help="Path to core_motif_metrics.json",
-    )
-    parser.add_argument(
-        "--background-bfile",
-        default=None,
-        help="Path to winning Markov background from Stage 4",
-    )
+    parser.add_argument("--break-windows", required=True, help="Path to break_windows_300bp.fasta")
+    parser.add_argument("--core-meme", required=True, help="Path to best_core_motif.meme")
+    parser.add_argument("--census-json", required=True, help="Path to coverage_and_chromosome_census.json")
+    parser.add_argument("--core-metrics-json", required=True, help="Path to core_motif_metrics.json")
+    parser.add_argument("--background-bfile", default=None, help="Winning Markov background from Stage 4")
     parser.add_argument("--sample-id", default="sample", help="Sample ID")
-    parser.add_argument(
-        "--output-aux-meme",
-        default="best_auxiliary_motif.meme",
-        help="Output auxiliary MEME file",
-    )
-    parser.add_argument(
-        "--output-spacing-tsv",
-        default="bipartite_spacing_summary.tsv",
-        help="Output TSV of bipartite spacing details",
-    )
-    parser.add_argument(
-        "--output-report",
-        default="cbm_discovery_report.md",
-        help="Output markdown report",
-    )
-    parser.add_argument(
-        "--output-masked-fasta",
-        default="break_sequences.core_masked.fasta",
-        help="Output core-masked FASTA",
-    )
-    parser.add_argument(
-        "--threads", type=int, default=1, help="Threads for MEME/FIMO/SpaMo"
-    )
+    parser.add_argument("--output-aux-meme", default="best_auxiliary_motif.meme", help="Output aux MEME")
+    parser.add_argument("--output-spacing-tsv", default="bipartite_spacing_summary.tsv", help="Spacing TSV")
+    parser.add_argument("--output-report", default="cbm_discovery_report.md", help="Output markdown report")
+    parser.add_argument("--output-masked-fasta", default="break_sequences.core_masked.fasta", help="Masked FASTA")
+    parser.add_argument("--threads", type=int, default=1, help="Threads for MEME/FIMO/SpaMo")
     return parser.parse_args()
 
 
@@ -142,34 +110,33 @@ def extract_motif_n_from_meme(
     if len(m_split) < 2:
         return None
 
-    motif_section = m_split[1]
     header = text.split("MOTIF")[0].strip() + "\n\n"
     next_num = motif_num + 1
-    m_next_split = re.split(
-        rf"\n(?=MOTIF\s+{next_num}\b|\bMEME-{next_num}\b)", motif_section
-    )
-    motif_content = m_next_split[0]
-
+    motif_content = re.split(
+        rf"\n(?=MOTIF\s+{next_num}\b|\bMEME-{next_num}\b)", m_split[1]
+    )[0]
     output_aux_meme.write_text(header + motif_content, encoding="utf-8")
 
+    parsed = parse_aux_meme_results(output_aux_meme)
+    if parsed:
+        parsed["id"] = f"MEME_soft_erasure_motif_{motif_num}"
+        parsed["meme_txt_path"] = str(output_aux_meme)
+        return parsed
+
     m_e = re.search(r"E=\s*(\S+)", motif_content)
-    evalue = float(m_e.group(1)) if m_e else 1.0
-
     m_w = re.search(r"w=\s*(\d+)", motif_content)
-    width = int(m_w.group(1)) if m_w else 8
-
-    m_nsites = re.search(r"nsites=\s*(\d+)", motif_content)
-    nsites = int(m_nsites.group(1)) if m_nsites else 0
-
+    m_ns = re.search(r"nsites=\s*(\d+)", motif_content)
     cons_m = re.search(r"Multilevel\s+([A-Za-z]+)", motif_content)
-    consensus = cons_m.group(1).upper() if cons_m else ""
-
+    w = int(m_w.group(1)) if m_w else 8
     return {
         "id": f"MEME_soft_erasure_motif_{motif_num}",
-        "consensus": consensus,
-        "width": width,
-        "nsites": nsites,
-        "evalue": evalue,
+        "consensus": cons_m.group(1).upper() if cons_m else "",
+        "width": w,
+        "nsites": int(m_ns.group(1)) if m_ns else 0,
+        "evalue": float(m_e.group(1)) if m_e else 1.0,
+        "total_ic": w * 1.5,
+        "mean_ic": 1.5,
+        "consensus_entropy": 1.0,
         "meme_txt_path": str(output_aux_meme),
     }
 
@@ -286,13 +253,24 @@ def main():
             candidate_soft = m3
 
     best_aux = None
-    if candidate_soft and (
-        not best_aux_grid or candidate_soft["evalue"] <= best_aux_grid["evalue"]
-    ):
+    soft_score = (
+        score_auxiliary_candidate(candidate_soft, len(seq_names))
+        if candidate_soft
+        else 0.0
+    )
+    grid_score = (
+        score_auxiliary_candidate(best_aux_grid, len(seq_names))
+        if best_aux_grid
+        else 0.0
+    )
+
+    if candidate_soft and soft_score > 0 and soft_score >= grid_score:
         best_aux = candidate_soft
+        best_aux["composite_score"] = soft_score
         shutil.copy(candidate_soft["meme_txt_path"], args.output_aux_meme)
-    elif best_aux_grid and best_aux_grid.get("meme_txt_path"):
+    elif best_aux_grid and grid_score > 0 and best_aux_grid.get("meme_txt_path"):
         best_aux = best_aux_grid
+        best_aux["composite_score"] = grid_score
         shutil.copy(best_aux["meme_txt_path"], args.output_aux_meme)
     else:
         with open(args.output_aux_meme, "w", encoding="utf-8") as f:

@@ -12,105 +12,25 @@ from typing import Any
 
 AUX_GRID_CONDITIONS = [
     # Fixed width 6 (hexamer)
-    {
-        "id": "A01_anr_w6_revcomp",
-        "mod": "anr",
-        "w_args": ["-w", "6"],
-        "revcomp": True,
-    },
-    {
-        "id": "A02_anr_w6_fwd",
-        "mod": "anr",
-        "w_args": ["-w", "6"],
-        "revcomp": False,
-    },
-    {
-        "id": "A03_zoops_w6_revcomp",
-        "mod": "zoops",
-        "w_args": ["-w", "6"],
-        "revcomp": True,
-    },
-    {
-        "id": "A04_zoops_w6_fwd",
-        "mod": "zoops",
-        "w_args": ["-w", "6"],
-        "revcomp": False,
-    },
+    {"id": "A01_anr_w6_revcomp", "mod": "anr", "w_args": ["-w", "6"], "revcomp": True},
+    {"id": "A02_anr_w6_fwd", "mod": "anr", "w_args": ["-w", "6"], "revcomp": False},
+    {"id": "A03_zoops_w6_revcomp", "mod": "zoops", "w_args": ["-w", "6"], "revcomp": True},
+    {"id": "A04_zoops_w6_fwd", "mod": "zoops", "w_args": ["-w", "6"], "revcomp": False},
     # Fixed width 8 (octamer)
-    {
-        "id": "A05_anr_w8_revcomp",
-        "mod": "anr",
-        "w_args": ["-w", "8"],
-        "revcomp": True,
-    },
-    {
-        "id": "A06_anr_w8_fwd",
-        "mod": "anr",
-        "w_args": ["-w", "8"],
-        "revcomp": False,
-    },
-    {
-        "id": "A07_zoops_w8_revcomp",
-        "mod": "zoops",
-        "w_args": ["-w", "8"],
-        "revcomp": True,
-    },
-    {
-        "id": "A08_zoops_w8_fwd",
-        "mod": "zoops",
-        "w_args": ["-w", "8"],
-        "revcomp": False,
-    },
+    {"id": "A05_anr_w8_revcomp", "mod": "anr", "w_args": ["-w", "8"], "revcomp": True},
+    {"id": "A06_anr_w8_fwd", "mod": "anr", "w_args": ["-w", "8"], "revcomp": False},
+    {"id": "A07_zoops_w8_revcomp", "mod": "zoops", "w_args": ["-w", "8"], "revcomp": True},
+    {"id": "A08_zoops_w8_fwd", "mod": "zoops", "w_args": ["-w", "8"], "revcomp": False},
     # Fixed width 11
-    {
-        "id": "A09_anr_w11_revcomp",
-        "mod": "anr",
-        "w_args": ["-w", "11"],
-        "revcomp": True,
-    },
-    {
-        "id": "A10_anr_w11_fwd",
-        "mod": "anr",
-        "w_args": ["-w", "11"],
-        "revcomp": False,
-    },
-    {
-        "id": "A11_zoops_w11_revcomp",
-        "mod": "zoops",
-        "w_args": ["-w", "11"],
-        "revcomp": True,
-    },
-    {
-        "id": "A12_zoops_w11_fwd",
-        "mod": "zoops",
-        "w_args": ["-w", "11"],
-        "revcomp": False,
-    },
+    {"id": "A09_anr_w11_revcomp", "mod": "anr", "w_args": ["-w", "11"], "revcomp": True},
+    {"id": "A10_anr_w11_fwd", "mod": "anr", "w_args": ["-w", "11"], "revcomp": False},
+    {"id": "A11_zoops_w11_revcomp", "mod": "zoops", "w_args": ["-w", "11"], "revcomp": True},
+    {"id": "A12_zoops_w11_fwd", "mod": "zoops", "w_args": ["-w", "11"], "revcomp": False},
     # Flexible width 6 to 12 bp
-    {
-        "id": "A13_anr_w6_12_revcomp",
-        "mod": "anr",
-        "w_args": ["-minw", "6", "-maxw", "12"],
-        "revcomp": True,
-    },
-    {
-        "id": "A14_anr_w6_12_fwd",
-        "mod": "anr",
-        "w_args": ["-minw", "6", "-maxw", "12"],
-        "revcomp": False,
-    },
-    {
-        "id": "A15_zoops_w6_12_revcomp",
-        "mod": "zoops",
-        "w_args": ["-minw", "6", "-maxw", "12"],
-        "revcomp": True,
-    },
-    {
-        "id": "A16_zoops_w6_12_fwd",
-        "mod": "zoops",
-        "w_args": ["-minw", "6", "-maxw", "12"],
-        "revcomp": False,
-    },
+    {"id": "A13_anr_w6_12_revcomp", "mod": "anr", "w_args": ["-minw", "6", "-maxw", "12"], "revcomp": True},
+    {"id": "A14_anr_w6_12_fwd", "mod": "anr", "w_args": ["-minw", "6", "-maxw", "12"], "revcomp": False},
+    {"id": "A15_zoops_w6_12_revcomp", "mod": "zoops", "w_args": ["-minw", "6", "-maxw", "12"], "revcomp": True},
+    {"id": "A16_zoops_w6_12_fwd", "mod": "zoops", "w_args": ["-minw", "6", "-maxw", "12"], "revcomp": False},
 ]
 
 
@@ -258,6 +178,41 @@ def _run_single_aux_condition(
     return None
 
 
+def score_auxiliary_candidate(
+    cand: dict[str, Any] | None, total_sequences: int = 1
+) -> float:
+    """Compute composite score for an auxiliary motif candidate."""
+    if not cand or cand.get("evalue", 1.0) > 0.05:
+        return 0.0
+    total_ic = cand.get("total_ic", 0.0)
+    if total_ic <= 0.0:
+        w = cand.get("width", 0)
+        mean_ic = cand.get("mean_ic", 0.0)
+        total_ic = w * mean_ic
+    if total_ic <= 0.0:
+        return 0.0
+
+    unique_seqs = cand.get("unique_sequences_hit", 0)
+    nsites = max(1, cand.get("nsites", 1))
+    proximal = cand.get("proximal_sites_6_50bp", 0)
+    c_ent = cand.get("consensus_entropy", 1.0)
+
+    tot_seq = max(1, total_sequences)
+    occupancy = min(1.0, unique_seqs / tot_seq) if unique_seqs > 0 else min(1.0, nsites / tot_seq)
+    spatial_spec = min(1.0, proximal / nsites) if proximal > 0 else 0.75
+    homopolymer_factor = (
+        1.0 if c_ent >= 1.2 else (c_ent / 1.2 if c_ent >= 0.6 else 0.05)
+    )
+
+    score = (
+        total_ic
+        * (0.3 + 0.7 * occupancy)
+        * (0.4 + 0.6 * spatial_spec)
+        * homopolymer_factor
+    )
+    return round(score, 4)
+
+
 def run_auxiliary_grid(
     masked_fasta: str | Path,
     out_dir: str | Path,
@@ -271,6 +226,14 @@ def run_auxiliary_grid(
     meme_bin = shutil.which("meme")
     if not meme_bin and not any(out_path.glob("*/meme.txt")):
         raise RuntimeError("Required binary 'meme' not found in PATH")
+
+    n_seqs = 0
+    with open(masked_fasta, encoding="utf-8") as f:
+        for line in f:
+            if line.startswith(">"):
+                n_seqs += 1
+    total_sequences = max(1, n_seqs)
+
     tasks = []
     for cond in AUX_GRID_CONDITIONS:
         cid = cond["id"]
@@ -288,21 +251,23 @@ def run_auxiliary_grid(
         for f in as_completed(futures):
             res = f.result()
             if res:
+                res["composite_score"] = score_auxiliary_candidate(res, total_sequences)
                 results.append(res)
 
-    # Check for significant auxiliary motif
+    # Check for significant auxiliary motif ranked by composite score
     sig_candidates = [
         r
         for r in results
         if r["evalue"] <= 0.05
         and r["mean_ic"] >= 0.50
         and r["consensus_entropy"] >= 0.80
+        and r.get("composite_score", 0.0) > 0
     ]
     if sig_candidates:
         sig_candidates.sort(
             key=lambda x: (
-                x["proximal_sites_6_50bp"],
-                x["mean_ic"],
+                x["composite_score"],
+                x["total_ic"],
                 -math.log10(max(x["evalue"], 1e-100)),
             ),
             reverse=True,
