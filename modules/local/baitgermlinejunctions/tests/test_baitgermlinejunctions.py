@@ -101,6 +101,14 @@ class TestBaitGermlineJunctions(unittest.TestCase):
         self.assertIsNotNone(p_wobble)
         self.assertEqual(p_wobble["branch"], "telo")
 
+        # Germline read with short 12 bp microhomology (2 repeats) followed by unique sequence
+        mh_read = self.anchor_seq[-60:] + "TAGGCTTAGGCT" + ("GAGCCTATTCCGAAGAGCTCGGCTTC" * 3)
+        p_mh = partition_baited_read(
+            self.anchor_seq, mh_read, repeat=self.repeat
+        )
+        self.assertIsNotNone(p_mh)
+        self.assertEqual(p_mh["branch"], "germline")
+
     def test_reconstruction_and_microhomology(self):
         # Multiple reads with small sequencing noise
         exts = [

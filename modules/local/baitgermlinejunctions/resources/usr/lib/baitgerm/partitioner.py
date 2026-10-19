@@ -64,10 +64,10 @@ def is_telomeric_extension(
     perms = get_cyclic_permutations(repeat)
     rep_len = len(repeat)
 
-    # 1. Tandem repeat scan: check for >= 2 consecutive repeats anywhere in first scan_window bp
+    # 1. Tandem repeat scan: check for >= 3 consecutive repeats anywhere in first scan_window bp
     scan_sub = flank[:scan_window]
     for p in perms:
-        if (p * 2) in scan_sub:
+        if (p * 3) in scan_sub:
             return True
 
     # 2. Windowed telomeric density check across prefix (up to 48 bp)
