@@ -94,9 +94,9 @@ class TestBipartiteProfiler(unittest.TestCase):
         rows_dyn, _summary_dyn = profile_bipartite_spacing(
             seq_names, core_hits, aux_hits, pos0_coord=pos0_map
         )
-        # In border_1 with pos0=93: Core at 100..120 (+) center=110 has offset 93 - 110 = -17.0 bp
-        self.assertEqual(rows_dyn[0]["core_offset_to_pos0"], -17.0)
-        self.assertEqual(rows[0]["core_offset_to_pos0"], 40.0)
+        # In border_1 with pos0=93: Core at 100..120 (+) has offset 93 - 120 = -27 bp
+        self.assertEqual(rows_dyn[0]["core_offset_to_pos0"], -27)
+        self.assertEqual(rows[0]["core_offset_to_pos0"], 30)
 
         # Test load_soma_len_map from FASTA headers
         with tempfile.NamedTemporaryFile("w", suffix=".fasta") as tf_fa:
