@@ -188,7 +188,12 @@ def deconvolve_and_census(
         c_germ = loc.get("c_germ", 0)
         coherence = loc.get("coherence", 0.0)
         c_telo = loc.get("c_telo", 0)
-        if c_telo >= min_telo_reads and c_germ >= min_germ_reads and coherence >= 0.65:
+        if (
+            c_telo >= min_telo_reads
+            and c_germ >= min_germ_reads
+            and coherence >= 0.65
+            and c_germ <= 5 * max(c_telo, min_telo_reads)
+        ):
             cand_breaks.append(loc)
 
     if cand_breaks:
@@ -212,8 +217,17 @@ def deconvolve_and_census(
         coherence = loc.get("coherence", 0.0)
         c_telo = loc.get("c_telo", 0)
 
+        # High-copy repeat / rDNA capped native telomere filter:
+        # Repetitive arrays terminating at germline telomeres exhibit massive c_germ (c_germ >> med_c_germ and c_germ >> c_telo)
+        is_high_copy = (
+            med_c_germ > 0
+            and c_telo >= telo_cutoff
+            and c_germ >= max(50, round(5.0 * med_c_germ))
+            and c_germ >= 5 * c_telo
+        )
+
         is_pde = False
-        if c_telo >= telo_cutoff and c_germ >= min_germ_reads:
+        if not is_high_copy and c_telo >= telo_cutoff and c_germ >= min_germ_reads:
             if coherence >= min_coherence:
                 is_pde = True
             elif c_germ >= min(5, min_germ_reads) and coherence >= 0.65:
@@ -221,6 +235,8 @@ def deconvolve_and_census(
 
         if is_pde:
             loc["classification"] = "PDE_BREAK_SITE"
+        elif is_high_copy:
+            loc["classification"] = "GERMLINE_NATIVE_TELOMERE"
         else:
             loc["classification"] = "CANDIDATE_TELOMERE"
 
@@ -247,7 +263,7 @@ def deconvolve_and_census(
     )
 
     for loc in loci:
-        if loc["classification"] == "PDE_BREAK_SITE":
+        if loc["classification"] in ("PDE_BREAK_SITE", "GERMLINE_NATIVE_TELOMERE"):
             continue
         c_telo = loc.get("c_telo", 0)
         c_germ = loc.get("c_germ", 0)

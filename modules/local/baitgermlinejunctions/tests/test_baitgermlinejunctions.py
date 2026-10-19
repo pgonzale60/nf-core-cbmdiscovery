@@ -165,6 +165,7 @@ class TestBaitGermlineJunctions(unittest.TestCase):
             {"anchor_id": "a_native", "c_telo": 5, "c_germ": 0, "coherence": 0.0, "break_window": ""},
             {"anchor_id": "a_low_coh", "c_telo": 20, "c_germ": 4, "coherence": 0.45, "break_window": ""},
             {"anchor_id": "a_unbroken", "c_telo": 0, "c_germ": 67, "coherence": 0.99, "break_window": ""},
+            {"anchor_id": "a_rdna_telo", "c_telo": 109, "c_germ": 5333, "coherence": 0.996, "break_window": ""},
         ]
         deduped = deduplicate_break_windows(loci)
         classified, census = deconvolve_and_census(deduped, min_germ_reads=2)
@@ -175,9 +176,10 @@ class TestBaitGermlineJunctions(unittest.TestCase):
         self.assertEqual(class_map["a_native"], "GERMLINE_NATIVE_TELOMERE")
         self.assertEqual(class_map["a_low_coh"], "LOW_COHERENCE_JUNCTION")
         self.assertEqual(class_map["a_unbroken"], "UNBROKEN_GERMLINE_LOCUS")
+        self.assertEqual(class_map["a_rdna_telo"], "GERMLINE_NATIVE_TELOMERE")
 
         self.assertEqual(census["n_breaks"], 2)
-        self.assertEqual(census["n_germ_telo"], 1)
+        self.assertEqual(census["n_germ_telo"], 2)
         self.assertEqual(census["median_c_soma"], 31.5)
         self.assertEqual(census["median_c_germ"], 12.0)
         self.assertAlmostEqual(census["germline_fraction"], 0.28, places=2)

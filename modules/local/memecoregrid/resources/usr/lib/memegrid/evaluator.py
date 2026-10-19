@@ -97,7 +97,9 @@ def parse_meme_txt(
                     # Distance relative to Position 0 (dynamic pos0 from sequence header, fallback to radius)
                     p0_match = re.search(r"_p0_(\d+)", seq_name)
                     pos0 = int(p0_match.group(1)) if p0_match else radius
-                    dist_to_pos0 = start_pos - pos0
+                    # Distance from motif center to Position 0
+                    motif_center = start_pos + (w - 1) / 2.0
+                    dist_to_pos0 = motif_center - pos0
                     site_records.append({
                         "seq": seq_name,
                         "strand": strand,
@@ -132,8 +134,9 @@ def parse_meme_txt(
         else (cons_entropy / 1.2 if cons_entropy >= 0.6 else 0.05)
     )
 
-    # Score rewards mean IC, occupancy, and tight positional clustering around pos 0
-    iqr_penalty = 1.0 / (1.0 + math.log1p(max(0.0, pos_iqr)))
+    # Score rewards mean IC, occupancy, and tight positional clustering normalized by search radius
+    norm_iqr = pos_iqr / max(10, radius)
+    iqr_penalty = 1.0 / (1.0 + math.log1p(norm_iqr * 5.0))
     if evalue > 0.05:
         composite_score = 0.0
     else:
@@ -152,7 +155,7 @@ def parse_meme_txt(
         "consensus_entropy": cons_entropy,
         "unique_occupied_sites": unique_seqs,
         "occupancy": round(occupancy, 4),
-        "median_offset_to_pos0": median_offset,
-        "positional_iqr": pos_iqr,
+        "median_offset_to_pos0": round(median_offset, 2),
+        "positional_iqr": round(pos_iqr, 2),
         "composite_score": round(composite_score, 4),
     }

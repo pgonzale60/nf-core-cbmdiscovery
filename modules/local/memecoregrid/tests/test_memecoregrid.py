@@ -211,8 +211,8 @@ anchor_5_r150_p0_93  +  92  1e-5
             tf_txt.write(mock_meme)
             tf_txt.flush()
             met = parse_meme_txt(tf_txt.name, radius=150, total_sequences=1)
-            # Offset must be 92 - 93 = -1.0 bp, NOT 92 - 150 = -58.0 bp!
-            self.assertEqual(met["median_offset_to_pos0"], -1.0)
+            # Offset from motif center to pos0 must be (92 + 2.5) - 93 = 1.5 bp
+            self.assertEqual(met["median_offset_to_pos0"], 1.5)
 
 
 if __name__ == "__main__":

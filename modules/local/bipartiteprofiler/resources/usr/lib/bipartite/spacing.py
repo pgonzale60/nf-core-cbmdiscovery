@@ -49,11 +49,13 @@ def profile_bipartite_spacing(
             c_start = c["start"]
             c_stop = c["stop"]
             c_strand = c["strand"]
-            # Distance from Core to Position 0
-            c_dist_to_pos0 = (
-                (pos0 - c_stop)
+            # Distance from Core Center to Position 0
+            core_center = (c_start + c_stop) / 2.0
+            c_dist_to_pos0 = round(
+                (pos0 - core_center)
                 if c_strand == "+"
-                else (c_start - pos0)
+                else (core_center - pos0),
+                1,
             )
             core_offsets.append(c_dist_to_pos0)
 
