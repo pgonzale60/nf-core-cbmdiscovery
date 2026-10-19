@@ -1,7 +1,6 @@
-"""Multi-radius window slicing for 300 bp break windows centered at Position 0."""
-
 import os
 from pathlib import Path
+import re
 
 
 def load_fasta(fasta_path: str | Path) -> list[tuple[str, str]]:
@@ -28,6 +27,14 @@ def load_fasta(fasta_path: str | Path) -> list[tuple[str, str]]:
     return records
 
 
+def extract_soma_len_from_header(header: str, default: int = 150) -> int:
+    """Extract soma_len from FASTA header if present, else fallback to default."""
+    m = re.search(r"\bsoma_len=(\d+)", header)
+    if m:
+        return int(m.group(1))
+    return default
+
+
 def slice_window_at_radius(
     seq: str, radius: int, center_soma_len: int = 150
 ) -> str:
@@ -35,7 +42,6 @@ def slice_window_at_radius(
 
     Extracts [-radius .. 0] somatic bases and [+1 .. +radius] germline bases.
     """
-    # pos 0 is at index center_soma_len - 1
     soma_start = max(0, center_soma_len - radius)
     soma_slice = seq[soma_start:center_soma_len]
 
@@ -55,12 +61,13 @@ def write_sliced_fasta(
     count = 0
     with open(output_path, "w", encoding="utf-8") as f:
         for header, seq in records:
-            sliced = slice_window_at_radius(
-                seq, radius, center_soma_len=center_soma_len
-            )
+            s_len = extract_soma_len_from_header(header, default=center_soma_len)
+            sliced = slice_window_at_radius(seq, radius, center_soma_len=s_len)
+            pos0 = min(s_len, radius)
             if len(sliced) >= 20:  # Minimum valid window size
-                # Clean header for MEME compatibility
+                # Clean header for MEME compatibility and embed pos0 coordinate
                 clean_header = header.split()[0].replace(":", "_")
-                f.write(f">{clean_header}_r{radius}\n{sliced}\n")
+                f.write(f">{clean_header}_r{radius}_p0_{pos0}\n{sliced}\n")
                 count += 1
     return count
+

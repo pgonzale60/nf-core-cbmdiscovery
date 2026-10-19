@@ -4,9 +4,24 @@ from collections import defaultdict
 import csv
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 from typing import Any
+
+
+def load_soma_len_map(fasta_path: str | Path, default: int = 150) -> dict[str, int]:
+    """Map clean sequence name to soma_len from FASTA header."""
+    soma_map = {}
+    if not os.path.exists(fasta_path):
+        return soma_map
+    with open(fasta_path, encoding="utf-8") as f:
+        for line in f:
+            if line.startswith(">"):
+                seq_id = line[1:].split()[0].replace(":", "_")
+                m = re.search(r"\bsoma_len=(\d+)", line)
+                soma_map[seq_id] = int(m.group(1)) if m else default
+    return soma_map
 
 
 def load_fasta_dict(fasta_path: str | Path) -> dict[str, str]:

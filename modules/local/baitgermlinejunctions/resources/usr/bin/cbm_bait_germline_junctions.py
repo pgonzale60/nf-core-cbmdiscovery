@@ -268,10 +268,12 @@ def main():
                 loc["classification"] == "PDE_BREAK_SITE"
                 and loc.get("break_window")
             ):
+                soma_len = min(150, len(loc["anchor_seq"]))
                 hdr = (
                     f"{loc['anchor_id']} class=PDE_BREAK_SITE "
                     f"c_telo={loc['c_telo']} c_germ={loc['c_germ']} "
-                    f"coherence={loc['coherence']} mh_len={loc['microhomology_len']}"
+                    f"coherence={loc['coherence']} mh_len={loc['microhomology_len']} "
+                    f"soma_len={soma_len}"
                 )
                 f_fa.write(f">{hdr}\n{loc['break_window']}\n")
 

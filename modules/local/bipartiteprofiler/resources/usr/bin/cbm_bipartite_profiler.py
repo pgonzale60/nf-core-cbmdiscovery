@@ -24,6 +24,7 @@ from bipartite.aux_grid import (  # noqa: E402
 )
 from bipartite.masker import (  # noqa: E402
     load_fasta_dict,
+    load_soma_len_map,
     mask_core_motifs,
     run_fimo,
 )
@@ -288,11 +289,12 @@ def main():
         for h in aux_fimo_hits:
             aux_hits_by_seq[h["seq_name"]].append(h)
 
+    soma_lens = load_soma_len_map(args.break_windows)
     spacing_rows, spacing_summary = profile_bipartite_spacing(
         seq_names=seq_names,
         core_hits_by_seq=core_hits_by_seq,
         aux_hits_by_seq=aux_hits_by_seq if best_aux else None,
-        pos0_coord=150,
+        pos0_coord=soma_lens,
     )
     write_spacing_tsv(spacing_rows, args.output_spacing_tsv)
 

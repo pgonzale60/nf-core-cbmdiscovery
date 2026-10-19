@@ -24,7 +24,7 @@ def profile_bipartite_spacing(
     seq_names: list[str],
     core_hits_by_seq: dict[str, list[dict[str, Any]]],
     aux_hits_by_seq: dict[str, list[dict[str, Any]]] | None = None,
-    pos0_coord: int = 150,
+    pos0_coord: int | dict[str, int] = 150,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Profile inter-motif edge-to-edge spacers, relative strand, and cleavage offsets."""
     rows = []
@@ -33,6 +33,8 @@ def profile_bipartite_spacing(
     partner_offsets = []
 
     aux_dict = aux_hits_by_seq or {}
+    pos0_map = pos0_coord if isinstance(pos0_coord, dict) else {}
+    default_pos0 = pos0_coord if isinstance(pos0_coord, int) else 150
 
     for s_name in seq_names:
         c_hits = core_hits_by_seq.get(s_name, [])
@@ -41,15 +43,17 @@ def profile_bipartite_spacing(
         if not c_hits:
             continue
 
+        pos0 = pos0_map.get(s_name, default_pos0)
+
         for c in c_hits:
             c_start = c["start"]
             c_stop = c["stop"]
             c_strand = c["strand"]
             # Distance from Core to Position 0
             c_dist_to_pos0 = (
-                (pos0_coord - c_stop)
+                (pos0 - c_stop)
                 if c_strand == "+"
-                else (c_start - pos0_coord)
+                else (c_start - pos0)
             )
             core_offsets.append(c_dist_to_pos0)
 
@@ -94,14 +98,14 @@ def profile_bipartite_spacing(
                     c_start, c_stop, p_start, p_stop
                 )
                 p_dist_to_pos0 = (
-                    (pos0_coord - p_stop)
+                    (pos0 - p_stop)
                     if p_strand == "+"
-                    else (p_start - pos0_coord)
+                    else (p_start - pos0)
                 )
                 p_domain = (
                     "Retained"
-                    if p_stop <= pos0_coord
-                    else ("Eliminated" if p_start > pos0_coord else "Spanning")
+                    if p_stop <= pos0
+                    else ("Eliminated" if p_start > pos0 else "Spanning")
                 )
                 rel_strand = "Same" if c_strand == p_strand else "Opposite"
                 p_type = "Auxiliary" if a_hits else "Secondary_Core"

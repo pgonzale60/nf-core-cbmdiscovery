@@ -178,6 +178,43 @@ s1 + 25 0.1
         # Verify ProcessPoolExecutor is used
         self.assertIn("ProcessPoolExecutor", src)
 
+    def test_dynamic_soma_len_normalization(self):
+        import tempfile
+        from memegrid.slicer import extract_soma_len_from_header, write_sliced_fasta
+
+        # Header with short Illumina somatic flank (e.g. 93 bp)
+        hdr = "anchor_5 class=PDE_BREAK_SITE soma_len=93"
+        self.assertEqual(extract_soma_len_from_header(hdr), 93)
+
+        # 243 bp sequence: 93 bp soma + 150 bp germline
+        seq = "A" * 93 + "C" * 150
+        with tempfile.NamedTemporaryFile("w", suffix=".fasta") as tf_fa:
+            write_sliced_fasta([(hdr, seq)], radius=150, output_path=tf_fa.name)
+            sliced_content = pathlib.Path(tf_fa.name).read_text()
+            self.assertIn("anchor_5_r150_p0_93", sliced_content)
+
+        # Mock MEME output where site is at start 92 (1 bp before cleavage)
+        mock_meme = """MEME version 4
+MOTIF TEST 1 width = 6 sites = 1 llr = 10 E-value = 1e-5
+letter-probability matrix: alength= 4 w= 6 nsites= 1 E= 1e-5
+  1.0 0.0 0.0 0.0
+  0.0 1.0 0.0 0.0
+  0.0 0.0 1.0 0.0
+  0.0 0.0 0.0 1.0
+  1.0 0.0 0.0 0.0
+  0.0 1.0 0.0 0.0
+Multilevel ACGTAC
+sites sorted by position p-value
+anchor_5_r150_p0_93  +  92  1e-5
+"""
+        with tempfile.NamedTemporaryFile("w", suffix=".txt") as tf_txt:
+            tf_txt.write(mock_meme)
+            tf_txt.flush()
+            met = parse_meme_txt(tf_txt.name, radius=150, total_sequences=1)
+            # Offset must be 92 - 93 = -1.0 bp, NOT 92 - 150 = -58.0 bp!
+            self.assertEqual(met["median_offset_to_pos0"], -1.0)
+
 
 if __name__ == "__main__":
     unittest.main()
+

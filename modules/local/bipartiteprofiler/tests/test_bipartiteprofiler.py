@@ -25,7 +25,10 @@ if str(LIB_DIR) not in sys.path:
     sys.path.insert(0, str(LIB_DIR))
 
 from bipartite.aux_grid import score_auxiliary_candidate  # noqa: E402
-from bipartite.masker import mask_sequences_with_hits  # noqa: E402
+from bipartite.masker import (  # noqa: E402
+    load_soma_len_map,
+    mask_sequences_with_hits,
+)
 from bipartite.reporter import generate_cbm_discovery_report  # noqa: E402
 from bipartite.spacing import (  # noqa: E402
     calculate_edge_to_edge_spacer,
@@ -85,6 +88,22 @@ class TestBipartiteProfiler(unittest.TestCase):
         self.assertEqual(summary["pct_retained_domain"], 100.0)
         self.assertEqual(summary["pct_eliminated_domain"], 0.0)
         self.assertEqual(rows[0]["partner_domain"], "Retained")
+
+        # Test dynamic pos0 mapping (e.g. border_1 with pos0=93)
+        pos0_map = {"border_1": 93, "border_2": 150}
+        rows_dyn, _summary_dyn = profile_bipartite_spacing(
+            seq_names, core_hits, aux_hits, pos0_coord=pos0_map
+        )
+        # In border_1 with pos0=93: Core at 100..120 (+) has offset 93 - 120 = -27 bp
+        self.assertEqual(rows_dyn[0]["core_offset_to_pos0"], -27)
+
+        # Test load_soma_len_map from FASTA headers
+        with tempfile.NamedTemporaryFile("w", suffix=".fasta") as tf_fa:
+            tf_fa.write(">border_1 soma_len=93\nACGT\n>border_2\nACGT\n")
+            tf_fa.flush()
+            m_lens = load_soma_len_map(tf_fa.name, default=150)
+            self.assertEqual(m_lens["border_1"], 93)
+            self.assertEqual(m_lens["border_2"], 150)
 
     def test_report_generation(self):
         with tempfile.NamedTemporaryFile("w", suffix=".json") as f_census, \

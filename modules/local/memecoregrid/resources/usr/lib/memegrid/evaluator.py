@@ -94,8 +94,10 @@ def parse_meme_txt(
                 strand = parts[1]
                 try:
                     start_pos = int(parts[2])
-                    # Distance relative to Position 0
-                    dist_to_pos0 = start_pos - radius
+                    # Distance relative to Position 0 (dynamic pos0 from sequence header, fallback to radius)
+                    p0_match = re.search(r"_p0_(\d+)", seq_name)
+                    pos0 = int(p0_match.group(1)) if p0_match else radius
+                    dist_to_pos0 = start_pos - pos0
                     site_records.append({
                         "seq": seq_name,
                         "strand": strand,
