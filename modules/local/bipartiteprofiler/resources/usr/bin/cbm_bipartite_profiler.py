@@ -155,6 +155,30 @@ def main():
     work_dir = Path("bipartite_work")
     work_dir.mkdir(exist_ok=True)
 
+    # Handle negative control / empty break windows (0 sequences)
+    if not seq_names:
+        with open(args.output_aux_meme, "w", encoding="utf-8") as f:
+            f.write("MEME version 4\n\nALPHABET= ACGT\n")
+        with open(args.output_masked_fasta, "w", encoding="utf-8") as f:
+            pass
+        spacing_rows, spacing_summary = profile_bipartite_spacing(
+            seq_names=[],
+            core_hits_by_seq={},
+            aux_hits_by_seq=None,
+            pos0_coord={},
+        )
+        write_spacing_tsv(spacing_rows, args.output_spacing_tsv)
+        generate_cbm_discovery_report(
+            sample_id=args.sample_id,
+            census_json_path=args.census_json,
+            core_metrics_json_path=args.core_metrics_json,
+            best_aux_motif=None,
+            bipartite_summary=spacing_summary,
+            output_report_md=args.output_report,
+        )
+        print(f"[BIPARTITEPROFILER] Completed for {args.sample_id} (0 break windows found - negative control).")
+        return
+
     # 1. Higher-order Markov background
     if args.background_bfile and os.path.exists(args.background_bfile):
         bg_file = Path(args.background_bfile)
