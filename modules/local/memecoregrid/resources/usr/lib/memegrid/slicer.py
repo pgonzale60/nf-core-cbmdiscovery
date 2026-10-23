@@ -35,18 +35,69 @@ def extract_soma_len_from_header(header: str, default: int = 150) -> int:
     return default
 
 
+def _revcomp(seq: str) -> str:
+    tr = str.maketrans("ACGTNacgtn", "TGCANtgcan")
+    return seq.translate(tr)[::-1]
+
+
+def mask_residual_telomeric_tracts(
+    seq: str, center_soma_len: int = 150, repeat: str = "TTAGGC"
+) -> str:
+    """Mask residual tandem (TTAGGC)2+ tracts (>=10 bp exact or 1-mismatch dimer) except [-6..+6] around pos0."""
+    if not seq or not repeat or len(seq) < 10:
+        return seq
+    rep = repeat.upper()
+    rc_rep = _revcomp(rep)
+    k = len(rep)
+    exact_10mers = {(rep * 3)[i : i + 10] for i in range(k)} | {
+        (rc_rep * 3)[i : i + 10] for i in range(k)
+    }
+    dimer_12mers = {(rep * 3)[i : i + 12] for i in range(k)} | {
+        (rc_rep * 3)[i : i + 12] for i in range(k)
+    }
+
+    n = len(seq)
+    s_up = seq.upper()
+    to_mask = [False] * n
+
+    for i in range(n - 9):
+        if s_up[i : i + 10] in exact_10mers:
+            for j in range(i, i + 10):
+                to_mask[j] = True
+
+    for i in range(n - 11):
+        sub12 = s_up[i : i + 12]
+        if any(
+            sum(1 for a, b in zip(sub12, t, strict=False) if a != b) <= 1
+            for t in dimer_12mers
+        ):
+            for j in range(i, i + 12):
+                to_mask[j] = True
+
+    # Preserve [-6 .. +6] around Position 0 for cleavage microhomology
+    prot_start = max(0, center_soma_len - 6)
+    prot_end = min(n, center_soma_len + 6)
+    for j in range(prot_start, prot_end):
+        to_mask[j] = False
+
+    return "".join("N" if to_mask[j] else seq[j] for j in range(n))
+
+
 def slice_window_at_radius(
-    seq: str, radius: int, center_soma_len: int = 150
+    seq: str, radius: int, center_soma_len: int = 150, repeat: str = "TTAGGC"
 ) -> str:
     """Slice sequence centered at boundary between somatic and germline flank.
 
-    Extracts [-radius .. 0] somatic bases and [+1 .. +radius] germline bases.
+    Masks residual tandem telomeric tracts outside [-6..+6] and extracts [-radius .. +radius].
     """
+    masked = mask_residual_telomeric_tracts(
+        seq, center_soma_len=center_soma_len, repeat=repeat
+    )
     soma_start = max(0, center_soma_len - radius)
-    soma_slice = seq[soma_start:center_soma_len]
+    soma_slice = masked[soma_start:center_soma_len]
 
-    germ_end = min(len(seq), center_soma_len + radius)
-    germ_slice = seq[center_soma_len:germ_end]
+    germ_end = min(len(masked), center_soma_len + radius)
+    germ_slice = masked[center_soma_len:germ_end]
 
     return soma_slice + germ_slice
 

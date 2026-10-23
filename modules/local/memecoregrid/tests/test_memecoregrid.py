@@ -214,6 +214,49 @@ anchor_5_r150_p0_93  +  92  1e-5
             # Offset from motif center to pos0 must be (92 + 2.5) - 93 = 1.5 bp
             self.assertEqual(met["median_offset_to_pos0"], 1.5)
 
+    def test_telomeric_echo_rejection_and_residual_masking(self):
+        import tempfile
+        from memegrid.evaluator import is_telomeric_repeat_echo
+        from memegrid.slicer import mask_residual_telomeric_tracts
+
+        # 1. Exact and 1-mismatch telomeric repeat motifs must be rejected
+        is_echo, frac = is_telomeric_repeat_echo("TTAGGCTTAGGCTTAGGCTTA")
+        self.assertTrue(is_echo)
+        self.assertGreaterEqual(frac, 0.5)
+
+        is_echo_deg, _ = is_telomeric_repeat_echo("TTAGGCTTAGACTAAGGCTTA")
+        self.assertTrue(is_echo_deg)
+
+        # Authentic Oscheius CBM must NOT be rejected
+        is_echo_cbm, _ = is_telomeric_repeat_echo("TTCTGGTTTAGGCTCAGCCTATGCCATAA")
+        self.assertFalse(is_echo_cbm)
+
+        # 2. parse_meme_txt must hard-reject telomeric echo with composite_score = 0.0
+        row_12 = "\n".join(["  1.0 0.0 0.0 0.0"] * 12)
+        telo_meme = f"""MEME version 4
+MOTIF TELO 1 width = 12 sites = 10 llr = 100 E-value = 1e-30
+letter-probability matrix: alength= 4 w= 12 nsites= 10 E= 1e-30
+{row_12}
+Multilevel TTAGGCTTAGGC
+sites sorted by position p-value
+s1 + 25 1e-8
+"""
+        with tempfile.NamedTemporaryFile("w", suffix=".txt") as tf_txt:
+            tf_txt.write(telo_meme)
+            tf_txt.flush()
+            met = parse_meme_txt(tf_txt.name, radius=30, total_sequences=1)
+            self.assertEqual(met["composite_score"], 0.0)
+            self.assertEqual(met["rejection_flag"], "REJECTED_TELOMERIC_ECHO")
+
+        # 3. Pre-MEME masking masks distal (TTAGGC)2+ tracts while preserving [-6..+6] around pos0
+        win = "A" * 50 + "TTAGGCTTAGGCTTAGGC" + "C" * 76 + "TTAGGCTTAGGC" + "G" * 144
+        self.assertEqual(len(win), 300)
+        masked = mask_residual_telomeric_tracts(win, center_soma_len=150)
+        # Distal tract at 50..68 must be masked with N
+        self.assertEqual(masked[50:68], "N" * 18)
+        # Cleavage junction [-6..+6] (144..156) must remain unmasked
+        self.assertEqual(masked[144:156], win[144:156])
+
 
 if __name__ == "__main__":
     unittest.main()

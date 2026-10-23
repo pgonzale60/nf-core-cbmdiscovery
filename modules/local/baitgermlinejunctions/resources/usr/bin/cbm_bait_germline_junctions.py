@@ -220,9 +220,9 @@ def main():
     else:
         loci = [_reconstruct_single_anchor(t) for t in tasks]
 
-    # Deduplicate allelic break windows via vsearch
+    # Deduplicate allelic and paralogous/satellite break windows via vsearch (>= 85% identity)
     deduped_loci = deduplicate_break_windows(
-        loci, min_identity=0.95, threads=args.threads
+        loci, min_identity=0.85, threads=args.threads
     )
 
     # Deconvolve into classes and compute census
@@ -244,6 +244,7 @@ def main():
         "microhomology_motif",
         "soma_flank_len",
         "germ_flank_len",
+        "collapsed_copies",
     ]
     with open(args.output_catalog, "w", newline="", encoding="utf-8") as f_tsv:
         writer = csv.DictWriter(f_tsv, fieldnames=fieldnames, delimiter="\t")
@@ -259,6 +260,7 @@ def main():
                 "microhomology_motif": loc["microhomology_motif"],
                 "soma_flank_len": min(150, len(loc["anchor_seq"])),
                 "germ_flank_len": len(loc.get("germline_consensus", "")),
+                "collapsed_copies": loc.get("collapsed_copies", 1),
             })
 
     # Write break_windows_300bp.fasta for PDE_BREAK_SITE loci
@@ -273,7 +275,7 @@ def main():
                     f"{loc['anchor_id']} class=PDE_BREAK_SITE "
                     f"c_telo={loc['c_telo']} c_germ={loc['c_germ']} "
                     f"coherence={loc['coherence']} mh_len={loc['microhomology_len']} "
-                    f"soma_len={soma_len}"
+                    f"soma_len={soma_len} collapsed_copies={loc.get('collapsed_copies', 1)}"
                 )
                 f_fa.write(f">{hdr}\n{loc['break_window']}\n")
 

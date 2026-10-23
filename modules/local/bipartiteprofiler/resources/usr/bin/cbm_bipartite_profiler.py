@@ -18,6 +18,7 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 from bipartite.aux_grid import (  # noqa: E402
+    is_telomeric_repeat_echo,
     parse_aux_meme_results,
     run_auxiliary_grid,
     score_auxiliary_candidate,
@@ -265,17 +266,17 @@ def main():
 
     # Compare soft-erasure Motif 2 / Motif 3 vs masked-grid auxiliary motif
     candidate_soft = None
-    m2 = extract_motif_n_from_meme(
-        meme_out_dir / "meme.txt", 2, work_dir / "soft_motif2.meme"
-    )
-    if m2 and not is_core_echo(m2["consensus"], core_consensus):
-        candidate_soft = m2
-    else:
-        m3 = extract_motif_n_from_meme(
-            meme_out_dir / "meme.txt", 3, work_dir / "soft_motif3.meme"
+    for m_idx in (2, 3):
+        m_cand = extract_motif_n_from_meme(
+            meme_out_dir / "meme.txt", m_idx, work_dir / f"soft_motif{m_idx}.meme"
         )
-        if m3 and not is_core_echo(m3["consensus"], core_consensus):
-            candidate_soft = m3
+        if (
+            m_cand
+            and not is_core_echo(m_cand["consensus"], core_consensus)
+            and not is_telomeric_repeat_echo(m_cand["consensus"])[0]
+        ):
+            candidate_soft = m_cand
+            break
 
     best_aux = None
     soft_score = (

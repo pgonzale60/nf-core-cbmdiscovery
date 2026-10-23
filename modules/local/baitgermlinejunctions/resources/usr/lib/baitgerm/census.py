@@ -17,68 +17,61 @@ def sequence_identity(s1: str, s2: str) -> float:
     return matches / l_min
 
 
-def are_loci_duplicates(
-    loc1: dict[str, Any], loc2: dict[str, Any], min_identity: float = 0.95
-) -> bool:
-    """Check if two loci represent the same break site anchored at Position 0."""
-    soma1 = loc1.get("anchor_seq", "")
-    soma2 = loc2.get("anchor_seq", "")
-    germ1 = loc1.get("germline_consensus", "")
-    germ2 = loc2.get("germline_consensus", "")
-
-    if soma1 and soma2:
-        l_soma = min(len(soma1), len(soma2))
-        m_soma = (
-            sum(
-                1
-                for a, b in zip(soma1[-l_soma:], soma2[-l_soma:], strict=False)
-                if a == b
-            )
-            if l_soma > 0
-            else 0
-        )
-        id_soma = m_soma / l_soma if l_soma > 0 else 0.0
-
-        if germ1 and germ2:
-            l_germ = min(len(germ1), len(germ2))
-            m_germ = (
-                sum(
-                    1
-                    for a, b in zip(germ1[:l_germ], germ2[:l_germ], strict=False)
-                    if a == b
-                )
-                if l_germ > 0
-                else 0
-            )
-            id_germ = m_germ / l_germ if l_germ > 0 else 0.0
-            return (id_soma >= min_identity) and (id_germ >= min_identity)
-        elif not germ1 and not germ2:
-            return id_soma >= min_identity
-        else:
-            return False
-
-    w1 = loc1.get("break_window", "")
-    w2 = loc2.get("break_window", "")
-    if w1 and w2:
-        return sequence_identity(w1, w2) >= min_identity
+def _is_short_microsatellite(sub: str) -> bool:
+    """Return True if sequence is dominated by a short period 1..9 bp microsatellite."""
+    n = len(sub)
+    if n < 10:
+        return True
+    for p in range(1, 10):
+        matches = sum(1 for i in range(n - p) if sub[i] == sub[i + p])
+        if matches / (n - p) >= 0.80:
+            return True
     return False
 
 
-def deduplicate_break_windows(
-    loci: list[dict[str, Any]], min_identity: float = 0.95, threads: int = 1
-) -> list[dict[str, Any]]:
-    """Deduplicate allelic or identical break windows at >= min_identity via vsearch --cluster_fast."""
-    if not loci:
-        return []
-    if len(loci) == 1:
-        return [dict(loci[0])]
+def is_tandem_satellite_window(
+    seq: str, min_period: int = 10, max_period: int = 100, min_copies: int = 3
+) -> bool:
+    """Detect if a window contains a tandem satellite array of monomer length 10..100 bp repeating >= 3 times."""
+    if not seq:
+        return False
+    s = seq.upper()
+    n = len(s)
+    if n < min_period * min_copies:
+        return False
 
-    vsearch_bin = shutil.which("vsearch")
-    if not vsearch_bin:
-        raise RuntimeError("Required binary 'vsearch' not found in PATH")
+    upper_p = min(max_period, n // min_copies)
+    for p in range(min_period, upper_p + 1):
+        span = p * min_copies
+        for start in range(0, n - span + 1, 4):
+            m1 = s[start : start + p]
+            m2 = s[start + p : start + 2 * p]
+            m3 = s[start + 2 * p : start + 3 * p]
+            id12 = sum(1 for a, b in zip(m1, m2, strict=False) if a == b) / p
+            id23 = sum(1 for a, b in zip(m2, m3, strict=False) if a == b) / p
+            if (
+                id12 >= 0.82
+                and id23 >= 0.82
+                and not _is_short_microsatellite(m1)
+                and not _is_short_microsatellite(m2)
+            ):
+                return True
+    return False
+
+
+def _vsearch_cluster_pass(
+    loci: list[dict[str, Any]],
+    seq_getter,
+    min_identity: float,
+    threads: int,
+    vsearch_bin: str,
+) -> list[dict[str, Any]]:
+    """Run one pass of vsearch --cluster_fast using sequences from seq_getter."""
+    if len(loci) <= 1:
+        return [dict(l, collapsed_copies=l.get("collapsed_copies", 1)) for l in loci]
 
     sorted_loci = sorted(
-        loci,
+        [dict(l, collapsed_copies=l.get("collapsed_copies", 1)) for l in loci],
         key=lambda x: (x.get("c_telo", 0) + x.get("c_germ", 0)),
         reverse=True,
     )
@@ -94,71 +87,46 @@ def deduplicate_break_windows(
             for idx, loc in enumerate(sorted_loci):
                 lid = f"loc_{idx}"
                 loci_by_id[lid] = loc
-                w = loc.get("break_window") or loc.get("anchor_seq", "")
-                if w:
+                w = seq_getter(loc)
+                if w and len(w) >= 20:
                     f_fa.write(f">{lid}\n{w}\n")
                     written_count += 1
 
-        if written_count == 0:
-            return [dict(loc) for loc in sorted_loci]
+        if written_count <= 1:
+            return sorted_loci
 
         cmd = [
-            vsearch_bin,
-            "--cluster_fast",
-            str(raw_fasta),
-            "--id",
-            str(min_identity),
-            "--iddef",
-            "0",
-            "--minseqlength",
-            "1",
-            "--qmask",
-            "none",
-            "--strand",
-            "both",
-            "--uc",
-            str(uc_file),
-            "--threads",
-            str(max(1, threads)),
+            vsearch_bin, "--cluster_fast", str(raw_fasta),
+            "--id", str(min_identity), "--iddef", "0",
+            "--minseqlength", "1", "--qmask", "none",
+            "--strand", "both", "--uc", str(uc_file),
+            "--threads", str(max(1, threads)),
         ]
-
-        subprocess.run(
-            cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=True,
-        )
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
         centroid_members: dict[str, list[dict[str, Any]]] = {}
         if uc_file.exists():
             with open(uc_file, encoding="utf-8") as f_uc:
                 for line in f_uc:
-                    line = line.strip()
-                    if not line:
+                    parts = line.strip().split("\t")
+                    if len(parts) < 10:
                         continue
-                    parts = line.split("\t")
-                    rec_type = parts[0]
-                    if rec_type == "S":
-                        query_id = parts[8]
-                        centroid_members.setdefault(query_id, []).append(loci_by_id[query_id])
-                    elif rec_type == "H":
-                        query_id = parts[8]
-                        target_id = parts[9]
-                        centroid_members.setdefault(target_id, []).append(loci_by_id[query_id])
+                    if parts[0] == "S":
+                        centroid_members.setdefault(parts[8], []).append(loci_by_id[parts[8]])
+                    elif parts[0] == "H":
+                        centroid_members.setdefault(parts[9], []).append(loci_by_id[parts[8]])
 
         seen_loci_ids: set[int] = set()
         deduped: list[dict[str, Any]] = []
         for members in centroid_members.values():
             rep = dict(members[0])
+            rep["collapsed_copies"] = sum(m.get("collapsed_copies", 1) for m in members)
             for m in members[1:]:
                 rep["c_telo"] = rep.get("c_telo", 0) + m.get("c_telo", 0)
                 rep["c_germ"] = rep.get("c_germ", 0) + m.get("c_germ", 0)
-                if len(m.get("anchor_seq", "")) > len(rep.get("anchor_seq", "")):
-                    rep["anchor_seq"] = m["anchor_seq"]
-                if len(m.get("germline_consensus", "")) > len(rep.get("germline_consensus", "")):
-                    rep["germline_consensus"] = m["germline_consensus"]
-                if len(m.get("break_window", "")) > len(rep.get("break_window", "")):
-                    rep["break_window"] = m["break_window"]
+                for k in ("anchor_seq", "germline_consensus", "break_window"):
+                    if len(m.get(k, "")) > len(rep.get(k, "")):
+                        rep[k] = m[k]
             for m in members:
                 for idx, loc in enumerate(sorted_loci):
                     if loc is m:
@@ -170,6 +138,41 @@ def deduplicate_break_windows(
                 deduped.append(dict(loc))
 
         return deduped
+
+
+def deduplicate_break_windows(
+    loci: list[dict[str, Any]], min_identity: float = 0.85, threads: int = 1
+) -> list[dict[str, Any]]:
+    """Collapse break windows sharing >= min_identity across full 300 bp window OR retained somatic flank [:130]."""
+    if not loci:
+        return []
+    if len(loci) == 1:
+        res = dict(loci[0])
+        res.setdefault("collapsed_copies", 1)
+        return [res]
+
+    vsearch_bin = shutil.which("vsearch")
+    if not vsearch_bin:
+        raise RuntimeError("Required binary 'vsearch' not found in PATH")
+
+    # Pass 1: Full 300 bp break window deduplication
+    pass1 = _vsearch_cluster_pass(
+        loci,
+        seq_getter=lambda l: l.get("break_window") or l.get("anchor_seq", ""),
+        min_identity=min_identity,
+        threads=threads,
+        vsearch_bin=vsearch_bin,
+    )
+
+    # Pass 2: Paralogous/satellite retained somatic flank window[:130] deduplication at >= 85% identity
+    flank_id = min(min_identity, 0.85)
+    return _vsearch_cluster_pass(
+        pass1,
+        seq_getter=lambda l: (l.get("anchor_seq") or l.get("break_window", "")[:150])[:130],
+        min_identity=flank_id,
+        threads=threads,
+        vsearch_bin=vsearch_bin,
+    )
 
 
 def deconvolve_and_census(
@@ -185,11 +188,15 @@ def deconvolve_and_census(
     # 1. First pass: find candidate break sites with initial dual-branch support
     cand_breaks = []
     for loc in loci:
+        loc.setdefault("collapsed_copies", 1)
+        w = loc.get("break_window") or loc.get("anchor_seq", "")
+        loc["_is_satellite"] = is_tandem_satellite_window(w)
         c_germ = loc.get("c_germ", 0)
         coherence = loc.get("coherence", 0.0)
         c_telo = loc.get("c_telo", 0)
         if (
-            c_telo >= min_telo_reads
+            not loc["_is_satellite"]
+            and c_telo >= min_telo_reads
             and c_germ >= min_germ_reads
             and coherence >= 0.65
             and c_germ <= 5 * max(c_telo, min_telo_reads)
@@ -216,6 +223,7 @@ def deconvolve_and_census(
         c_germ = loc.get("c_germ", 0)
         coherence = loc.get("coherence", 0.0)
         c_telo = loc.get("c_telo", 0)
+        is_sat = loc.pop("_is_satellite", False)
 
         # High-copy repeat / rDNA capped native telomere filter:
         # Repetitive arrays terminating at germline telomeres exhibit massive c_germ (c_germ >> med_c_germ and c_germ >> c_telo)
@@ -227,13 +235,15 @@ def deconvolve_and_census(
         )
 
         is_pde = False
-        if not is_high_copy and c_telo >= telo_cutoff and c_germ >= min_germ_reads:
+        if not is_sat and not is_high_copy and c_telo >= telo_cutoff and c_germ >= min_germ_reads:
             if coherence >= min_coherence:
                 is_pde = True
             elif c_germ >= min(5, min_germ_reads) and coherence >= 0.65:
                 is_pde = True
 
-        if is_pde:
+        if is_sat:
+            loc["classification"] = "TANDEM_SATELLITE_ARRAY"
+        elif is_pde:
             loc["classification"] = "PDE_BREAK_SITE"
         elif is_high_copy:
             loc["classification"] = "GERMLINE_NATIVE_TELOMERE"
@@ -263,7 +273,11 @@ def deconvolve_and_census(
     )
 
     for loc in loci:
-        if loc["classification"] in ("PDE_BREAK_SITE", "GERMLINE_NATIVE_TELOMERE"):
+        if loc["classification"] in (
+            "PDE_BREAK_SITE",
+            "GERMLINE_NATIVE_TELOMERE",
+            "TANDEM_SATELLITE_ARRAY",
+        ):
             continue
         c_telo = loc.get("c_telo", 0)
         c_germ = loc.get("c_germ", 0)
@@ -284,6 +298,9 @@ def deconvolve_and_census(
     n_shared_telo = sum(
         1 for l in loci if l["classification"] == "SHARED_NATIVE_TELOMERE"
     )
+    n_satellite = sum(
+        1 for l in loci if l["classification"] == "TANDEM_SATELLITE_ARRAY"
+    )
 
     census = {
         "median_c_soma": round(med_c_soma, 2),
@@ -293,6 +310,7 @@ def deconvolve_and_census(
         "n_germ_telo": n_germ_telo,
         "estimated_germline_chromosomes": round(n_germ_telo / 2.0, 1),
         "n_shared_telo": n_shared_telo,
+        "n_satellite_excluded": n_satellite,
     }
 
     return loci, census

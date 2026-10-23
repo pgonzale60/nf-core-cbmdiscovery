@@ -281,11 +281,17 @@ def run_meme_grid(
     all_results.extend(p3_results)
 
     all_results.sort(key=lambda r: r["composite_score"], reverse=True)
-    best_motif = all_results[0] if all_results else None
+    valid_results = [r for r in all_results if r.get("composite_score", 0.0) > 0.0]
+    best_motif = valid_results[0] if valid_results else None
 
     # Save winning Markov background
-    if best_motif and best_motif.get("bfile"):
-        shutil.copy(best_motif["bfile"], out_path / "best_background.bfile")
+    bg_src = (
+        best_motif.get("bfile")
+        if best_motif
+        else (all_results[0].get("bfile") if all_results else None)
+    )
+    if bg_src and os.path.exists(bg_src):
+        shutil.copy(bg_src, out_path / "best_background.bfile")
 
     return best_motif, all_results
 
@@ -322,7 +328,7 @@ def export_grid_outputs(
         "phase", "condition_id", "radius", "markov_order", "mod", "revcomp",
         "pal", "w_label", "width", "nsites", "evalue", "consensus", "total_ic",
         "mean_ic", "consensus_entropy", "occupancy", "median_offset_to_pos0",
-        "positional_iqr", "composite_score",
+        "positional_iqr", "telomeric_echo_fraction", "rejection_flag", "composite_score",
     ]
     with open(summary_tsv, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(

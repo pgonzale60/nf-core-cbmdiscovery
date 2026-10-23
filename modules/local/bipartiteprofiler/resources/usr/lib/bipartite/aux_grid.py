@@ -178,12 +178,78 @@ def _run_single_aux_condition(
     return None
 
 
+def _revcomp(seq: str) -> str:
+    tr = str.maketrans("ACGTNacgtn", "TGCANtgcan")
+    return seq.translate(tr)[::-1]
+
+
+def is_telomeric_repeat_echo(
+    consensus: str, repeat: str = "TTAGGC"
+) -> tuple[bool, float]:
+    """Check if motif consensus is a telomeric repeat echo (>=50% exact 6-mers or >=70% in-phase 1-mismatch coverage)."""
+    if not consensus or not repeat:
+        return False, 0.0
+    cons = consensus.upper().strip()
+    rep = repeat.upper().strip()
+    k = len(rep)
+    n = len(cons)
+    if n < k:
+        return False, 0.0
+
+    rc_rep = _revcomp(rep)
+    fwd_perms = {(rep * 2)[i : i + k] for i in range(k)}
+    rev_perms = {(rc_rep * 2)[i : i + k] for i in range(k)}
+
+    n_kmers = n - k + 1
+    fwd_exact = sum(1 for i in range(n_kmers) if cons[i : i + k] in fwd_perms)
+    rev_exact = sum(1 for i in range(n_kmers) if cons[i : i + k] in rev_perms)
+    exact_frac = max(fwd_exact, rev_exact) / n_kmers
+
+    best_cov_1mm = 0.0
+    reps_needed = (n // k) + 3
+    for base_rep in (rep, rc_rep):
+        full_periodic = base_rep * reps_needed
+        for phase in range(k):
+            tmpl = full_periodic[phase : phase + n]
+            covered = [False] * n
+            mm1_count = 0
+            for i in range(n_kmers):
+                mm = sum(
+                    1
+                    for a, b in zip(cons[i : i + k], tmpl[i : i + k], strict=False)
+                    if a != b
+                )
+                if mm <= 1:
+                    mm1_count += 1
+                    for j in range(i, i + k):
+                        covered[j] = True
+            if mm1_count >= 2:
+                best_cov_1mm = max(best_cov_1mm, sum(covered) / n)
+
+    is_echo = (exact_frac >= 0.50) or (n >= 8 and best_cov_1mm >= 0.70)
+    return is_echo, round(max(exact_frac, best_cov_1mm), 4)
+
+
 def score_auxiliary_candidate(
-    cand: dict[str, Any] | None, total_sequences: int = 1
+    cand: dict[str, Any] | None,
+    total_sequences: int = 1,
+    telomere_repeat: str = "TTAGGC",
 ) -> float:
-    """Compute composite score for an auxiliary motif candidate."""
-    if not cand or cand.get("evalue", 1.0) > 0.05:
+    """Compute composite score for an auxiliary motif candidate with telomeric-echo hard rejection."""
+    if not cand:
         return 0.0
+    is_telo, telo_frac = is_telomeric_repeat_echo(
+        cand.get("consensus", ""), repeat=telomere_repeat
+    )
+    cand["telomeric_echo_fraction"] = telo_frac
+    if is_telo:
+        cand["rejection_flag"] = "REJECTED_TELOMERIC_ECHO"
+        cand["composite_score"] = 0.0
+        return 0.0
+    if cand.get("evalue", 1.0) > 0.05:
+        cand["rejection_flag"] = "REJECTED_INSIGNIFICANT_EVALUE"
+        return 0.0
+    cand["rejection_flag"] = "PASS"
     total_ic = cand.get("total_ic", 0.0)
     if total_ic <= 0.0:
         w = cand.get("width", 0)

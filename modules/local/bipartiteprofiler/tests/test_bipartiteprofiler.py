@@ -184,6 +184,56 @@ class TestBipartiteProfiler(unittest.TestCase):
         self.assertGreater(score_11bp, score_6bp)
         self.assertGreater(score_11bp, 14.0)
 
+        # Telomeric repeat echo in auxiliary candidate must be hard-rejected (score 0.0)
+        telo_aux = {
+            "consensus": "TTAGGCTTAGGC",
+            "width": 12,
+            "nsites": 15,
+            "evalue": 1e-12,
+            "total_ic": 20.0,
+            "mean_ic": 1.67,
+            "consensus_entropy": 1.85,
+            "unique_sequences_hit": 15,
+            "proximal_sites_6_50bp": 15,
+        }
+        self.assertEqual(score_auxiliary_candidate(telo_aux, total_sequences=15), 0.0)
+        self.assertEqual(telo_aux["rejection_flag"], "REJECTED_TELOMERIC_ECHO")
+
+    def test_satellite_window_and_paralog_flank_deduplication(self):
+        bait_lib = REPO_ROOT / "modules" / "local" / "baitgermlinejunctions" / "resources" / "usr" / "lib"
+        if str(bait_lib) not in sys.path:
+            sys.path.insert(0, str(bait_lib))
+        from baitgerm.census import deconvolve_and_census, deduplicate_break_windows, is_tandem_satellite_window
+
+        # 47 bp satellite monomer repeating across 300 bp window (C. angaria PS1015 style)
+        monomer_47 = "GCCGAAGGCCCAGACTCAGATTAGGCTTAGGCTTAGGCTTAACGTAC"
+        sat_win = (monomer_47 * 7)[:300]
+        self.assertTrue(is_tandem_satellite_window(sat_win))
+
+        # Two paralogous windows sharing >90% identity in window[:130] but diverging in germline
+        flank_150 = (
+            "GCTAGCTGATCGATCGTAGCTAGCTAGCATCGATCGTAGCTAGCATCGAT"
+            "TGCATGCAAAGGTTCCAAGGTTCCAAGGTTCCTAGCTGATCGATAGTCGA"
+            "CCTTAAGGCCTTAAGGACTGACTGACTGTACGTACGCATGCTAGCTAGTC"
+        )
+        germ_a = ("AACCTTGG" * 19)[:150]
+        germ_b = ("GGTTAACC" * 19)[:150]
+        loci = [
+            {"anchor_id": "p1", "anchor_seq": flank_150, "break_window": flank_150 + germ_a, "c_telo": 20, "c_germ": 5, "coherence": 0.95},
+            {"anchor_id": "p2", "anchor_seq": flank_150, "break_window": flank_150 + germ_b, "c_telo": 10, "c_germ": 3, "coherence": 0.95},
+            {"anchor_id": "sat", "anchor_seq": sat_win[:150], "break_window": sat_win, "c_telo": 30, "c_germ": 8, "coherence": 0.99},
+        ]
+        deduped = deduplicate_break_windows(loci)
+        # p1 and p2 collapse due to shared somatic flank [:130]
+        self.assertEqual(len(deduped), 2)
+        p_merged = next(l for l in deduped if l["anchor_id"] in ("p1", "p2"))
+        self.assertEqual(p_merged["collapsed_copies"], 2)
+
+        classified, census = deconvolve_and_census(deduped)
+        class_map = {l["anchor_id"]: l["classification"] for l in classified}
+        self.assertEqual(class_map["sat"], "TANDEM_SATELLITE_ARRAY")
+        self.assertEqual(census["n_satellite_excluded"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

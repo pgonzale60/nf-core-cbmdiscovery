@@ -23,8 +23,64 @@ def calculate_consensus_entropy(consensus: str) -> float:
     return round(entropy, 4)
 
 
+def _revcomp(seq: str) -> str:
+    tr = str.maketrans("ACGTNacgtn", "TGCANtgcan")
+    return seq.translate(tr)[::-1]
+
+
+def is_telomeric_repeat_echo(
+    consensus: str, repeat: str = "TTAGGC"
+) -> tuple[bool, float]:
+    """Check if motif consensus is a telomeric repeat echo (>=50% exact 6-mers or >=70% in-phase 1-mismatch coverage)."""
+    if not consensus or not repeat:
+        return False, 0.0
+    cons = consensus.upper().strip()
+    rep = repeat.upper().strip()
+    k = len(rep)
+    n = len(cons)
+    if n < k:
+        return False, 0.0
+
+    rc_rep = _revcomp(rep)
+    fwd_perms = {(rep * 2)[i : i + k] for i in range(k)}
+    rev_perms = {(rc_rep * 2)[i : i + k] for i in range(k)}
+
+    n_kmers = n - k + 1
+    fwd_exact = sum(1 for i in range(n_kmers) if cons[i : i + k] in fwd_perms)
+    rev_exact = sum(1 for i in range(n_kmers) if cons[i : i + k] in rev_perms)
+    exact_frac = max(fwd_exact, rev_exact) / n_kmers
+
+    # Check in-phase 1-mismatch coverage across all cyclic phases of forward and reverse repeat
+    best_cov_1mm = 0.0
+    reps_needed = (n // k) + 3
+    for base_rep in (rep, rc_rep):
+        full_periodic = base_rep * reps_needed
+        for phase in range(k):
+            tmpl = full_periodic[phase : phase + n]
+            covered = [False] * n
+            mm1_count = 0
+            for i in range(n_kmers):
+                mm = sum(
+                    1
+                    for a, b in zip(cons[i : i + k], tmpl[i : i + k], strict=False)
+                    if a != b
+                )
+                if mm <= 1:
+                    mm1_count += 1
+                    for j in range(i, i + k):
+                        covered[j] = True
+            if mm1_count >= 2:
+                best_cov_1mm = max(best_cov_1mm, sum(covered) / n)
+
+    is_echo = (exact_frac >= 0.50) or (n >= 8 and best_cov_1mm >= 0.70)
+    return is_echo, round(max(exact_frac, best_cov_1mm), 4)
+
+
 def parse_meme_txt(
-    txt_path: str | Path, radius: int, total_sequences: int = 1
+    txt_path: str | Path,
+    radius: int,
+    total_sequences: int = 1,
+    telomere_repeat: str = "TTAGGC",
 ) -> dict[str, Any] | None:
     """Parse MEME text output and compute comprehensive motif metrics."""
     if not os.path.exists(txt_path):
@@ -137,12 +193,20 @@ def parse_meme_txt(
     # Score rewards mean IC, occupancy, and tight positional clustering normalized by search radius
     norm_iqr = pos_iqr / max(10, radius)
     iqr_penalty = 1.0 / (1.0 + math.log1p(norm_iqr * 5.0))
-    if evalue > 0.05:
+    is_telo_echo, telo_echo_frac = is_telomeric_repeat_echo(
+        consensus, repeat=telomere_repeat
+    )
+    if is_telo_echo:
         composite_score = 0.0
+        rejection_flag = "REJECTED_TELOMERIC_ECHO"
+    elif evalue > 0.05:
+        composite_score = 0.0
+        rejection_flag = "REJECTED_INSIGNIFICANT_EVALUE"
     else:
         composite_score = (
             (mean_ic * math.sqrt(w)) * occupancy * iqr_penalty * homopolymer_factor
         )
+        rejection_flag = "PASS"
 
     return {
         "width": w,
@@ -157,5 +221,7 @@ def parse_meme_txt(
         "occupancy": round(occupancy, 4),
         "median_offset_to_pos0": round(median_offset, 2),
         "positional_iqr": round(pos_iqr, 2),
+        "telomeric_echo_fraction": telo_echo_frac,
+        "rejection_flag": rejection_flag,
         "composite_score": round(composite_score, 4),
     }
