@@ -83,6 +83,17 @@ def load_fasta_dict(fasta_path: str | Path) -> dict[str, str]:
     return seqs
 
 
+def has_motifs(meme_file: str | Path) -> bool:
+    """Check if MEME file contains at least one MOTIF definition."""
+    if not os.path.exists(meme_file):
+        return False
+    with open(meme_file, encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            if line.startswith("MOTIF "):
+                return True
+    return False
+
+
 def run_fimo(
     meme_file: str | Path,
     fasta_file: str | Path,
@@ -90,6 +101,9 @@ def run_fimo(
     threshold: float = SSOT["fimo_core_threshold"],
 ) -> list[dict[str, Any]]:
     """Execute FIMO to find motif occurrences passing threshold."""
+    if not has_motifs(meme_file):
+        return []
+
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
     fimo_tsv = out_path / "fimo.tsv"
