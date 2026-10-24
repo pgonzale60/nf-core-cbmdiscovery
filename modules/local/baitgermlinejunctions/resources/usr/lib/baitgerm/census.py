@@ -6,15 +6,7 @@ import statistics
 import subprocess
 import tempfile
 from typing import Any
-
-
-def sequence_identity(s1: str, s2: str) -> float:
-    """Calculate sequence identity between two equal-length or overlapping sequences."""
-    l_min = min(len(s1), len(s2))
-    if l_min == 0:
-        return 0.0
-    matches = sum(1 for a, b in zip(s1[:l_min], s2[:l_min], strict=False) if a == b)
-    return matches / l_min
+from cbm_defaults import SSOT
 
 
 def _is_short_microsatellite(sub: str) -> bool:
@@ -30,7 +22,10 @@ def _is_short_microsatellite(sub: str) -> bool:
 
 
 def is_tandem_satellite_window(
-    seq: str, min_period: int = 10, max_period: int = 100, min_copies: int = 3
+    seq: str,
+    min_period: int = SSOT["satellite_min_period"],
+    max_period: int = SSOT["satellite_max_period"],
+    min_copies: int = SSOT["satellite_min_copies"],
 ) -> bool:
     """Detect if a window contains a tandem satellite array of monomer length 10..100 bp repeating >= 3 times."""
     if not seq:
@@ -40,6 +35,7 @@ def is_tandem_satellite_window(
     if n < min_period * min_copies:
         return False
 
+    min_id = SSOT["satellite_min_identity"]
     upper_p = min(max_period, n // min_copies)
     for p in range(min_period, upper_p + 1):
         span = p * min_copies
@@ -50,8 +46,8 @@ def is_tandem_satellite_window(
             id12 = sum(1 for a, b in zip(m1, m2, strict=False) if a == b) / p
             id23 = sum(1 for a, b in zip(m2, m3, strict=False) if a == b) / p
             if (
-                id12 >= 0.82
-                and id23 >= 0.82
+                id12 >= min_id
+                and id23 >= min_id
                 and not _is_short_microsatellite(m1)
                 and not _is_short_microsatellite(m2)
             ):
@@ -140,10 +136,20 @@ def _vsearch_cluster_pass(
         return deduped
 
 
+def _extract_distal_soma_flank(loc: dict[str, Any]) -> str:
+    """Extract retained somatic flank excluding the immediate proximal CBM zone."""
+    cbm_excl = SSOT["somatic_dedup_cbm_exclusion_bp"]
+    max_soma = SSOT["max_soma_flank_len"]
+    s = loc.get("anchor_seq") or loc.get("break_window", "")[:max_soma]
+    return s[:-cbm_excl] if len(s) > cbm_excl + 20 else s
+
+
 def deduplicate_break_windows(
-    loci: list[dict[str, Any]], min_identity: float = 0.85, threads: int = 1
+    loci: list[dict[str, Any]],
+    min_identity: float = SSOT["stage3_min_identity"],
+    threads: int = 1,
 ) -> list[dict[str, Any]]:
-    """Collapse break windows sharing >= min_identity across full 300 bp window OR retained somatic flank [:130]."""
+    """Collapse break windows sharing >= min_identity across full window OR retained somatic flank."""
     if not loci:
         return []
     if len(loci) == 1:
@@ -155,7 +161,7 @@ def deduplicate_break_windows(
     if not vsearch_bin:
         raise RuntimeError("Required binary 'vsearch' not found in PATH")
 
-    # Pass 1: Full 300 bp break window deduplication
+    # Pass 1: Full break window deduplication
     pass1 = _vsearch_cluster_pass(
         loci,
         seq_getter=lambda l: l.get("break_window") or l.get("anchor_seq", ""),
@@ -164,11 +170,11 @@ def deduplicate_break_windows(
         vsearch_bin=vsearch_bin,
     )
 
-    # Pass 2: Paralogous/satellite retained somatic flank window[:130] deduplication at >= 85% identity
-    flank_id = min(min_identity, 0.85)
+    # Pass 2: Paralogous/satellite retained somatic flank deduplication
+    flank_id = min(min_identity, SSOT["stage3_min_identity"])
     return _vsearch_cluster_pass(
         pass1,
-        seq_getter=lambda l: (l.get("anchor_seq") or l.get("break_window", "")[:150])[:130],
+        seq_getter=_extract_distal_soma_flank,
         min_identity=flank_id,
         threads=threads,
         vsearch_bin=vsearch_bin,
@@ -177,9 +183,9 @@ def deduplicate_break_windows(
 
 def deconvolve_and_census(
     loci: list[dict[str, Any]],
-    min_germ_reads: int = 2,
-    min_coherence: float = 0.85,
-    min_telo_reads: int = 5,
+    min_germ_reads: int = SSOT["min_germ_reads"],
+    min_coherence: float = SSOT["min_coherence"],
+    min_telo_reads: int = SSOT["min_telo_reads"],
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Classify anchors into PDE_BREAK_SITE, GERMLINE_NATIVE_TELOMERE, SHARED_NATIVE_TELOMERE,
 

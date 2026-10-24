@@ -55,6 +55,9 @@ class TestMemeCoreGrid(unittest.TestCase):
         self.assertGreater(ent, 1.0)
 
     def test_generate_grid_conditions(self):
+        from memegrid.grid_runner import RADII
+
+        self.assertIn(300, RADII)
         conds = generate_grid_conditions(radii=[30, 50])
         # 2 radii * 3 models * 2 strands * 3 width ranges = 36 conditions
         self.assertEqual(len(conds), 36)

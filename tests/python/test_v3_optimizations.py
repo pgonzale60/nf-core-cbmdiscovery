@@ -180,14 +180,14 @@ class TestV3Optimizations(unittest.TestCase):
             ]
             subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-            # Assert break window is 300 bp and accurately reconstructed across Y-junction
+            # Assert break window is untrimmed on Illumina and accurately reconstructed across Y-junction
             fa_lines = [l.strip() for l in out_fa.read_text().splitlines() if l.strip() and not l.startswith(">")]
             self.assertTrue(len(fa_lines) > 0)
             window = "".join(fa_lines)
-            self.assertEqual(len(window), 300)
+            self.assertEqual(len(window), len(soma_150) + len(germline_180))
             self.assertEqual(window[:150], soma_150)
             self.assertTrue(window[150:].startswith("TTAG"))
-            self.assertEqual(window[150:], germline_180[:150])
+            self.assertEqual(window[150:], germline_180)
 
             # Assert microhomology is 4 bp 'TTAG'
             cat_text = out_cat.read_text()

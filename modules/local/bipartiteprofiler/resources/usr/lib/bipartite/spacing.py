@@ -5,6 +5,8 @@ from pathlib import Path
 import statistics
 from typing import Any
 
+from cbm_defaults import SSOT
+
 
 def calculate_edge_to_edge_spacer(
     c_start: int, c_stop: int, p_start: int, p_stop: int
@@ -24,7 +26,7 @@ def profile_bipartite_spacing(
     seq_names: list[str],
     core_hits_by_seq: dict[str, list[dict[str, Any]]],
     aux_hits_by_seq: dict[str, list[dict[str, Any]]] | None = None,
-    pos0_coord: int | dict[str, int] = 150,
+    pos0_coord: int | dict[str, int] = SSOT["max_soma_flank_len"],
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Profile inter-motif edge-to-edge spacers, relative strand, and cleavage offsets."""
     rows = []
@@ -34,7 +36,11 @@ def profile_bipartite_spacing(
 
     aux_dict = aux_hits_by_seq or {}
     pos0_map = pos0_coord if isinstance(pos0_coord, dict) else {}
-    default_pos0 = pos0_coord if isinstance(pos0_coord, int) else 150
+    default_pos0 = (
+        pos0_coord
+        if isinstance(pos0_coord, int)
+        else SSOT["max_soma_flank_len"]
+    )
 
     for s_name in seq_names:
         c_hits = core_hits_by_seq.get(s_name, [])

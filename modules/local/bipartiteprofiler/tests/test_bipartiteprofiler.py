@@ -184,6 +184,13 @@ class TestBipartiteProfiler(unittest.TestCase):
         self.assertGreater(score_11bp, score_6bp)
         self.assertGreater(score_11bp, 14.0)
 
+        # Auxiliary scoring must NOT reward proximity to cleavage site
+        pal_distal = dict(pal_11bp, proximal_sites_6_50bp=0)
+        self.assertEqual(
+            score_auxiliary_candidate(pal_distal, total_sequences=15),
+            score_11bp,
+        )
+
         # Telomeric repeat echo in auxiliary candidate must be hard-rejected (score 0.0)
         telo_aux = {
             "consensus": "TTAGGCTTAGGC",

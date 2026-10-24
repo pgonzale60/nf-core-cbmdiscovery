@@ -10,6 +10,8 @@ import shutil
 import subprocess
 from typing import Any
 
+from cbm_defaults import SSOT
+
 AUX_GRID_CONDITIONS = [
     # Fixed width 6 (hexamer)
     {"id": "A01_anr_w6_revcomp", "mod": "anr", "w_args": ["-w", "6"], "revcomp": True},
@@ -35,7 +37,7 @@ AUX_GRID_CONDITIONS = [
 
 
 def parse_aux_meme_results(
-    txt_path: str | Path, center_pos: int = 150
+    txt_path: str | Path, center_pos: int = SSOT["max_soma_flank_len"]
 ) -> dict[str, Any] | None:
     """Parse secondary MEME search results."""
     if not os.path.exists(txt_path):
@@ -184,7 +186,7 @@ def _revcomp(seq: str) -> str:
 
 
 def is_telomeric_repeat_echo(
-    consensus: str, repeat: str = "TTAGGC"
+    consensus: str, repeat: str = SSOT["telomere_repeat"]
 ) -> tuple[bool, float]:
     """Check if motif consensus is a telomeric repeat echo (>=50% exact 6-mers or >=70% in-phase 1-mismatch coverage)."""
     if not consensus or not repeat:
@@ -226,16 +228,18 @@ def is_telomeric_repeat_echo(
             if mm1_count >= 2:
                 best_cov_1mm = max(best_cov_1mm, sum(covered) / n)
 
-    is_echo = (exact_frac >= 0.50) or (n >= 8 and best_cov_1mm >= 0.70)
+    is_echo = (exact_frac >= SSOT["telomeric_echo_exact_kmer_cutoff"]) or (
+        n >= 8 and best_cov_1mm >= SSOT["telomeric_echo_1mm_cov_cutoff"]
+    )
     return is_echo, round(max(exact_frac, best_cov_1mm), 4)
 
 
 def score_auxiliary_candidate(
     cand: dict[str, Any] | None,
     total_sequences: int = 1,
-    telomere_repeat: str = "TTAGGC",
+    telomere_repeat: str = SSOT["telomere_repeat"],
 ) -> float:
-    """Compute composite score for an auxiliary motif candidate with telomeric-echo hard rejection."""
+    """Compute composite score for an auxiliary motif candidate without proximity bias."""
     if not cand:
         return 0.0
     is_telo, telo_frac = is_telomeric_repeat_echo(
@@ -246,7 +250,7 @@ def score_auxiliary_candidate(
         cand["rejection_flag"] = "REJECTED_TELOMERIC_ECHO"
         cand["composite_score"] = 0.0
         return 0.0
-    if cand.get("evalue", 1.0) > 0.05:
+    if cand.get("evalue", 1.0) > SSOT["aux_evalue_cutoff"]:
         cand["rejection_flag"] = "REJECTED_INSIGNIFICANT_EVALUE"
         return 0.0
     cand["rejection_flag"] = "PASS"
@@ -260,22 +264,19 @@ def score_auxiliary_candidate(
 
     unique_seqs = cand.get("unique_sequences_hit", 0)
     nsites = max(1, cand.get("nsites", 1))
-    proximal = cand.get("proximal_sites_6_50bp", 0)
     c_ent = cand.get("consensus_entropy", 1.0)
 
     tot_seq = max(1, total_sequences)
-    occupancy = min(1.0, unique_seqs / tot_seq) if unique_seqs > 0 else min(1.0, nsites / tot_seq)
-    spatial_spec = min(1.0, proximal / nsites) if proximal > 0 else 0.75
+    occupancy = (
+        min(1.0, unique_seqs / tot_seq)
+        if unique_seqs > 0
+        else min(1.0, nsites / tot_seq)
+    )
     homopolymer_factor = (
         1.0 if c_ent >= 1.2 else (c_ent / 1.2 if c_ent >= 0.6 else 0.05)
     )
 
-    score = (
-        total_ic
-        * (0.3 + 0.7 * occupancy)
-        * (0.4 + 0.6 * spatial_spec)
-        * homopolymer_factor
-    )
+    score = total_ic * (0.3 + 0.7 * occupancy) * homopolymer_factor
     return round(score, 4)
 
 

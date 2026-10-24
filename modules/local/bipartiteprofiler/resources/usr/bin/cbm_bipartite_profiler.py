@@ -34,6 +34,7 @@ from bipartite.spacing import (  # noqa: E402
     profile_bipartite_spacing,
     write_spacing_tsv,
 )
+from cbm_defaults import SSOT  # noqa: E402
 
 
 def parse_args():
@@ -55,20 +56,23 @@ def parse_args():
 
 
 def build_higher_order_markov_bg(fasta_file: str | Path, out_bg: Path) -> Path:
-    """Build higher-order Markov background from distal flanking arms [-150..-60] & [+60..+150]."""
+    """Build higher-order Markov background from distal flanking arms outside [-excl_r..+excl_r]."""
     fgm_bin = shutil.which("fasta-get-markov")
     if not fgm_bin:
         raise RuntimeError("Required binary 'fasta-get-markov' not found in PATH")
 
     seqs = load_fasta_dict(fasta_file)
+    soma_lens = load_soma_len_map(fasta_file)
     distal_fa = out_bg.parent / "distal_arms_bg.fasta"
+    excl_r = SSOT["distal_bg_exclusion_radius"]
 
     total_len = 0
     with open(distal_fa, "w", encoding="utf-8") as f_out:
-        for idx, (_hdr, s) in enumerate(seqs.items()):
+        for idx, (hdr, s) in enumerate(seqs.items()):
             s = s.upper()
-            left_arm = s[:90] if len(s) >= 90 else s
-            right_arm = s[210:] if len(s) >= 210 else ""
+            pos0 = soma_lens.get(hdr, len(s) // 2)
+            left_arm = s[: max(0, pos0 - excl_r)]
+            right_arm = s[pos0 + excl_r :] if len(s) > pos0 + excl_r else ""
             if left_arm:
                 f_out.write(f">distal_L_{idx}\n{left_arm}\n")
                 total_len += len(left_arm)
@@ -242,7 +246,7 @@ def main():
         fasta_file=args.break_windows,
         output_masked_fasta=args.output_masked_fasta,
         fimo_out_dir="fimo_core_hits",
-        threshold=1e-4,
+        threshold=SSOT["fimo_core_threshold"],
     )
 
     core_hits_by_seq = defaultdict(list)
@@ -309,7 +313,7 @@ def main():
             meme_file=args.output_aux_meme,
             fasta_file=args.break_windows,
             out_dir="fimo_aux_hits",
-            threshold=1e-3,
+            threshold=SSOT["fimo_aux_threshold"],
         )
         for h in aux_fimo_hits:
             aux_hits_by_seq[h["seq_name"]].append(h)

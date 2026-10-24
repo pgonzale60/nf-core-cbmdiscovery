@@ -33,7 +33,7 @@ process BAITGERMLINEJUNCTIONS {
     def r2 = is_single ? "" : "${reads[1]}"
 
     """
-    # Tool: cbm_bait_germline_junctions.py | Script-SHA: ea5fb06c96a1adc3
+    # Tool: cbm_bait_germline_junctions.py | Script-SHA: 5d81574493eaaf76
 
     # 1. Extract terminal 60 bp of candidate anchors into bait FASTA
     python3 -c "

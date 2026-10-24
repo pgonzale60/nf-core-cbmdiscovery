@@ -2,6 +2,8 @@ import os
 from pathlib import Path
 import re
 
+from cbm_defaults import SSOT
+
 
 def load_fasta(fasta_path: str | Path) -> list[tuple[str, str]]:
     """Load FASTA into a list of (header, sequence) tuples."""
@@ -27,12 +29,14 @@ def load_fasta(fasta_path: str | Path) -> list[tuple[str, str]]:
     return records
 
 
-def extract_soma_len_from_header(header: str, default: int = 150) -> int:
-    """Extract soma_len from FASTA header if present, else fallback to default."""
+def extract_soma_len_from_header(
+    header: str, default: int | None = None
+) -> int:
+    """Extract soma_len from FASTA header if present, else fallback to default or SSOT."""
     m = re.search(r"\bsoma_len=(\d+)", header)
     if m:
         return int(m.group(1))
-    return default
+    return default if default is not None else SSOT["max_soma_flank_len"]
 
 
 def _revcomp(seq: str) -> str:
@@ -41,7 +45,9 @@ def _revcomp(seq: str) -> str:
 
 
 def mask_residual_telomeric_tracts(
-    seq: str, center_soma_len: int = 150, repeat: str = "TTAGGC"
+    seq: str,
+    center_soma_len: int = SSOT["max_soma_flank_len"],
+    repeat: str = SSOT["telomere_repeat"],
 ) -> str:
     """Mask residual tandem (TTAGGC)2+ tracts (>=10 bp exact or 1-mismatch dimer) except [-6..+6] around pos0."""
     if not seq or not repeat or len(seq) < 10:
@@ -74,9 +80,10 @@ def mask_residual_telomeric_tracts(
             for j in range(i, i + 12):
                 to_mask[j] = True
 
-    # Preserve [-6 .. +6] around Position 0 for cleavage microhomology
-    prot_start = max(0, center_soma_len - 6)
-    prot_end = min(n, center_soma_len + 6)
+    # Preserve [-prot_r .. +prot_r] around Position 0 for cleavage microhomology
+    prot_r = SSOT["cleavage_mh_protection_radius"]
+    prot_start = max(0, center_soma_len - prot_r)
+    prot_end = min(n, center_soma_len + prot_r)
     for j in range(prot_start, prot_end):
         to_mask[j] = False
 
@@ -84,7 +91,10 @@ def mask_residual_telomeric_tracts(
 
 
 def slice_window_at_radius(
-    seq: str, radius: int, center_soma_len: int = 150, repeat: str = "TTAGGC"
+    seq: str,
+    radius: int,
+    center_soma_len: int = SSOT["max_soma_flank_len"],
+    repeat: str = SSOT["telomere_repeat"],
 ) -> str:
     """Slice sequence centered at boundary between somatic and germline flank.
 
@@ -106,13 +116,18 @@ def write_sliced_fasta(
     records: list[tuple[str, str]],
     radius: int,
     output_path: str | Path,
-    center_soma_len: int = 150,
+    center_soma_len: int | None = None,
 ) -> int:
     """Write sliced records to output_path. Returns count of written records."""
     count = 0
     with open(output_path, "w", encoding="utf-8") as f:
         for header, seq in records:
-            s_len = extract_soma_len_from_header(header, default=center_soma_len)
+            fallback_len = (
+                center_soma_len
+                if center_soma_len is not None
+                else (len(seq) // 2 if seq else SSOT["max_soma_flank_len"])
+            )
+            s_len = extract_soma_len_from_header(header, default=fallback_len)
             sliced = slice_window_at_radius(seq, radius, center_soma_len=s_len)
             pos0 = min(s_len, radius)
             if len(sliced) >= 20:  # Minimum valid window size

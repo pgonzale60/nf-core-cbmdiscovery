@@ -308,9 +308,9 @@ class TestBaitGermlineJunctions(unittest.TestCase):
             out_content = out_fa.read_text()
             lines = [l.strip() for l in out_content.splitlines() if l.strip() and not l.startswith(">")]
             seq = "".join(lines)
-            self.assertEqual(len(seq), 300)
+            self.assertEqual(len(seq), len(soma) + len(germ_210))
             self.assertEqual(seq[:150], soma)
-            self.assertEqual(seq[150:], germ_210[:150])
+            self.assertEqual(seq[150:], germ_210)
 
     def test_cli_illumina_single_end_rejected(self):
         cli_script = (

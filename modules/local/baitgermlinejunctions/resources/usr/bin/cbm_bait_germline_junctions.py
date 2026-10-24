@@ -28,6 +28,7 @@ from baitgerm.reconstructor import (  # noqa: E402
     build_300bp_break_window,
     reconstruct_germline_consensus,
 )
+from cbm_defaults import SSOT  # noqa: E402
 
 
 def parse_args():
@@ -52,28 +53,39 @@ def parse_args():
         help="Sequencing platform",
     )
     parser.add_argument(
-        "--telomere-repeat", default="TTAGGC", help="Canonical telomere repeat"
+        "--telomere-repeat",
+        default=SSOT["telomere_repeat"],
+        help="Canonical telomere repeat",
     )
     parser.add_argument(
-        "--kmer-size", type=int, default=31, help="Bait k-mer size"
+        "--kmer-size",
+        type=int,
+        default=SSOT["kmer_size"],
+        help="Bait k-mer size",
     )
     parser.add_argument(
         "--min-germ-reads",
         type=int,
-        default=2,
+        default=SSOT["min_germ_reads"],
         help="Minimum germline read-through reads",
     )
     parser.add_argument(
         "--min-telo-reads",
         type=int,
-        default=5,
+        default=SSOT["min_telo_reads"],
         help="Minimum telomeric reads supporting somatic branch of break site",
     )
     parser.add_argument(
         "--min-coherence",
         type=float,
-        default=0.85,
+        default=SSOT["min_coherence"],
         help="Minimum germline branch coherence",
+    )
+    parser.add_argument(
+        "--max-flank-len",
+        type=int,
+        default=SSOT["max_soma_flank_len"],
+        help="Max flank length on HiFi (untrimmed on Illumina)",
     )
     parser.add_argument(
         "--output-catalog",
@@ -83,7 +95,7 @@ def parse_args():
     parser.add_argument(
         "--output-fasta",
         default="break_windows_300bp.fasta",
-        help="Output FASTA of 300 bp break windows",
+        help="Output FASTA of break windows",
     )
     parser.add_argument(
         "--output-census",
@@ -109,6 +121,7 @@ def _reconstruct_single_anchor(task_args: tuple) -> dict:
         loc_reads,
         min_germ_reads,
         telomere_repeat,
+        max_flank,
     ) = task_args
 
     germ_cons = ""
@@ -120,7 +133,7 @@ def _reconstruct_single_anchor(task_args: tuple) -> dict:
     if c_germ >= min_germ_reads:
         germ_cons, coherence = reconstruct_germline_consensus(
             germline_exts,
-            max_len=150,
+            max_len=max_flank,
             anchor_seq=a_seq,
             local_reads=loc_reads,
             threads=1,
@@ -128,7 +141,12 @@ def _reconstruct_single_anchor(task_args: tuple) -> dict:
         mh_len, mh_motif = annotate_microhomology(
             germ_cons, repeat=telomere_repeat
         )
-        break_window = build_300bp_break_window(a_seq, germ_cons)
+        break_window = build_300bp_break_window(
+            a_seq,
+            germ_cons,
+            soma_flank_target=max_flank,
+            germ_flank_target=max_flank,
+        )
 
     return {
         "anchor_id": a_id,
@@ -199,6 +217,7 @@ def main():
                     local_reads[a_id].append(s2)
                     local_reads[a_id].append(s1)
 
+    max_flank = args.max_flank_len if args.platform == "hifi" else None
     tasks = [
         (
             a_id,
@@ -209,6 +228,7 @@ def main():
             local_reads.get(a_id, []),
             args.min_germ_reads,
             args.telomere_repeat,
+            max_flank,
         )
         for a_id, a_seq in anchors.items()
     ]
@@ -222,7 +242,7 @@ def main():
 
     # Deduplicate allelic and paralogous/satellite break windows via vsearch (>= 85% identity)
     deduped_loci = deduplicate_break_windows(
-        loci, min_identity=0.85, threads=args.threads
+        loci, min_identity=SSOT["stage3_min_identity"], threads=args.threads
     )
 
     # Deconvolve into classes and compute census
@@ -250,6 +270,11 @@ def main():
         writer = csv.DictWriter(f_tsv, fieldnames=fieldnames, delimiter="\t")
         writer.writeheader()
         for loc in classified_loci:
+            soma_len = (
+                min(max_flank, len(loc["anchor_seq"]))
+                if max_flank
+                else len(loc["anchor_seq"])
+            )
             writer.writerow({
                 "anchor_id": loc["anchor_id"],
                 "classification": loc["classification"],
@@ -258,7 +283,7 @@ def main():
                 "coherence": loc["coherence"],
                 "microhomology_len": loc["microhomology_len"],
                 "microhomology_motif": loc["microhomology_motif"],
-                "soma_flank_len": min(150, len(loc["anchor_seq"])),
+                "soma_flank_len": soma_len,
                 "germ_flank_len": len(loc.get("germline_consensus", "")),
                 "collapsed_copies": loc.get("collapsed_copies", 1),
             })
@@ -270,7 +295,11 @@ def main():
                 loc["classification"] == "PDE_BREAK_SITE"
                 and loc.get("break_window")
             ):
-                soma_len = min(150, len(loc["anchor_seq"]))
+                soma_len = (
+                    min(max_flank, len(loc["anchor_seq"]))
+                    if max_flank
+                    else len(loc["anchor_seq"])
+                )
                 hdr = (
                     f"{loc['anchor_id']} class=PDE_BREAK_SITE "
                     f"c_telo={loc['c_telo']} c_germ={loc['c_germ']} "

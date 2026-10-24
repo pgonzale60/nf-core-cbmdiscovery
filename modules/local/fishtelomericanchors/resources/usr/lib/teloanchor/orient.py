@@ -1,6 +1,7 @@
 """Orientation normalizer and Position 0 trimmer for telomeric junction reads."""
 
 from typing import Any
+from cbm_defaults import SSOT
 from .detector import revcomp
 
 
@@ -16,8 +17,8 @@ def get_cyclic_prefixes(repeat: str) -> list[str]:
 def normalize_and_trim_flank(
     read_seq: str,
     tract_info: dict[str, Any],
-    repeat: str = "TTAGGC",
-    max_flank_len: int = 150,
+    repeat: str = SSOT["telomere_repeat"],
+    max_flank_len: int | None = SSOT["max_soma_flank_len"],
 ) -> dict[str, Any] | None:
     """Standardize orientation to 5' -> 3' (flank on left, telomere on right),
 
@@ -68,10 +69,10 @@ def normalize_and_trim_flank(
         return None
 
     # Position 0 is defined as the 3' terminal base of trimmed_flank
-    # Extract [-max_flank_len .. 0]
+    # Extract [-max_flank_len .. 0] (or untrimmed if max_flank_len is None)
     anchor_seq = (
         trimmed_flank[-max_flank_len:]
-        if len(trimmed_flank) >= max_flank_len
+        if (max_flank_len is not None and len(trimmed_flank) >= max_flank_len)
         else trimmed_flank
     )
 

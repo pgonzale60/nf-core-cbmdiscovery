@@ -7,6 +7,8 @@ from pathlib import Path
 import re
 from typing import Any
 
+from cbm_defaults import SSOT
+
 
 def calculate_consensus_entropy(consensus: str) -> float:
     """Calculate Shannon entropy (in bits) across the characters of a consensus sequence."""
@@ -29,7 +31,7 @@ def _revcomp(seq: str) -> str:
 
 
 def is_telomeric_repeat_echo(
-    consensus: str, repeat: str = "TTAGGC"
+    consensus: str, repeat: str = SSOT["telomere_repeat"]
 ) -> tuple[bool, float]:
     """Check if motif consensus is a telomeric repeat echo (>=50% exact 6-mers or >=70% in-phase 1-mismatch coverage)."""
     if not consensus or not repeat:
@@ -72,7 +74,9 @@ def is_telomeric_repeat_echo(
             if mm1_count >= 2:
                 best_cov_1mm = max(best_cov_1mm, sum(covered) / n)
 
-    is_echo = (exact_frac >= 0.50) or (n >= 8 and best_cov_1mm >= 0.70)
+    is_echo = (exact_frac >= SSOT["telomeric_echo_exact_kmer_cutoff"]) or (
+        n >= 8 and best_cov_1mm >= SSOT["telomeric_echo_1mm_cov_cutoff"]
+    )
     return is_echo, round(max(exact_frac, best_cov_1mm), 4)
 
 
@@ -80,7 +84,7 @@ def parse_meme_txt(
     txt_path: str | Path,
     radius: int,
     total_sequences: int = 1,
-    telomere_repeat: str = "TTAGGC",
+    telomere_repeat: str = SSOT["telomere_repeat"],
 ) -> dict[str, Any] | None:
     """Parse MEME text output and compute comprehensive motif metrics."""
     if not os.path.exists(txt_path):
@@ -199,7 +203,7 @@ def parse_meme_txt(
     if is_telo_echo:
         composite_score = 0.0
         rejection_flag = "REJECTED_TELOMERIC_ECHO"
-    elif evalue > 0.05:
+    elif evalue > SSOT["core_evalue_cutoff"]:
         composite_score = 0.0
         rejection_flag = "REJECTED_INSIGNIFICANT_EVALUE"
     else:

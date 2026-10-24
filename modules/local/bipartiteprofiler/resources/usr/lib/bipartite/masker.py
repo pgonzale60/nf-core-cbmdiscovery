@@ -9,18 +9,52 @@ import shutil
 import subprocess
 from typing import Any
 
+from cbm_defaults import SSOT
 
-def load_soma_len_map(fasta_path: str | Path, default: int = 150) -> dict[str, int]:
-    """Map clean sequence name to soma_len from FASTA header."""
+
+def load_soma_len_map(
+    fasta_path: str | Path, default: int | None = None
+) -> dict[str, int]:
+    """Map clean sequence name to soma_len from FASTA header (fallback to seq midpoint or SSOT)."""
     soma_map = {}
     if not os.path.exists(fasta_path):
         return soma_map
     with open(fasta_path, encoding="utf-8") as f:
+        cur_id = None
+        cur_hdr = ""
+        cur_len = 0
         for line in f:
+            line = line.strip()
+            if not line:
+                continue
             if line.startswith(">"):
-                seq_id = line[1:].split()[0].replace(":", "_")
-                m = re.search(r"\bsoma_len=(\d+)", line)
-                soma_map[seq_id] = int(m.group(1)) if m else default
+                if cur_id is not None:
+                    m = re.search(r"\bsoma_len=(\d+)", cur_hdr)
+                    soma_map[cur_id] = (
+                        int(m.group(1))
+                        if m
+                        else (
+                            default
+                            if default is not None
+                            else (cur_len // 2 or SSOT["max_soma_flank_len"])
+                        )
+                    )
+                cur_id = line[1:].split()[0].replace(":", "_")
+                cur_hdr = line
+                cur_len = 0
+            else:
+                cur_len += len(line)
+        if cur_id is not None:
+            m = re.search(r"\bsoma_len=(\d+)", cur_hdr)
+            soma_map[cur_id] = (
+                int(m.group(1))
+                if m
+                else (
+                    default
+                    if default is not None
+                    else (cur_len // 2 or SSOT["max_soma_flank_len"])
+                )
+            )
     return soma_map
 
 
@@ -53,7 +87,7 @@ def run_fimo(
     meme_file: str | Path,
     fasta_file: str | Path,
     out_dir: str | Path,
-    threshold: float = 1e-4,
+    threshold: float = SSOT["fimo_core_threshold"],
 ) -> list[dict[str, Any]]:
     """Execute FIMO to find motif occurrences passing threshold."""
     out_path = Path(out_dir)
@@ -131,7 +165,7 @@ def mask_core_motifs(
     fasta_file: str | Path,
     output_masked_fasta: str | Path,
     fimo_out_dir: str | Path,
-    threshold: float = 1e-4,
+    threshold: float = SSOT["fimo_core_threshold"],
 ) -> tuple[dict[str, str], list[dict[str, Any]]]:
     """Run FIMO with core motif on FASTA, mask instances with N, and save masked FASTA."""
     seq_dict = load_fasta_dict(fasta_file)

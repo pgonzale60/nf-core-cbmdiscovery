@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import tempfile
 from typing import Any
+from cbm_defaults import SSOT
 
 
 def sequence_identity_anchored_3p(s1: str, s2: str) -> float:
@@ -21,8 +22,8 @@ def sequence_identity_anchored_3p(s1: str, s2: str) -> float:
 
 def cluster_anchors(
     observations: list[dict[str, Any]],
-    min_identity: float = 0.98,
-    min_cluster_size: int = 1,
+    min_identity: float = SSOT["stage1_min_identity"],
+    min_cluster_size: int = SSOT["min_cluster_size_hifi"],
     threads: int = 1,
 ) -> list[dict[str, Any]]:
     """Cluster somatic anchor sequences using vsearch --cluster_fast.

@@ -9,18 +9,13 @@ import shutil
 import subprocess
 from typing import Any
 
+from cbm_defaults import SSOT
 from .evaluator import parse_meme_txt
-from .slicer import load_fasta, write_sliced_fasta
+from .slicer import extract_soma_len_from_header, load_fasta, write_sliced_fasta
 
-RADII = [30, 50, 100, 150]
-
-WIDTH_RANGES = [
-    {"label": "w6_15", "args": ["-minw", "6", "-maxw", "15"]},
-    {"label": "w12_30", "args": ["-minw", "12", "-maxw", "30"]},
-    {"label": "w15_50", "args": ["-minw", "15", "-maxw", "50"]},
-]
-
-MODELS = ["zoops", "anr", "oops"]
+RADII = SSOT["core_grid_radii"]
+WIDTH_RANGES = SSOT["core_grid_width_ranges"]
+MODELS = SSOT["core_grid_models"]
 
 
 def generate_grid_conditions(radii: list[int] | None = None) -> list[dict[str, Any]]:
@@ -46,22 +41,22 @@ def build_distal_flank_markov_backgrounds(
     break_windows_fasta: str | Path,
     output_dir: Path,
 ) -> tuple[list[int], dict[int, str]]:
-    """Build candidate Markov backgrounds (m=0,1,2,3) from distal flanking arms [-150..-60] & [+60..+150]."""
+    """Build candidate Markov backgrounds (m=0,1,2,3) from distal flanking arms outside [-excl_r..+excl_r]."""
     fgm_bin = shutil.which("fasta-get-markov")
     if not fgm_bin:
         raise RuntimeError("Required binary 'fasta-get-markov' not found in PATH")
 
     records = load_fasta(break_windows_fasta)
     distal_fa = output_dir / "distal_flanks_bg.fasta"
+    excl_r = SSOT["distal_bg_exclusion_radius"]
 
     total_len = 0
     with open(distal_fa, "w", encoding="utf-8") as f_out:
-        for idx, (_hdr, seq) in enumerate(records):
+        for idx, (hdr, seq) in enumerate(records):
             s = seq.upper()
-            # Distal 5' arm [-150 .. -60] (first 90 bp)
-            left_arm = s[:90] if len(s) >= 90 else s
-            # Distal 3' arm [+60 .. +150] (last 90 bp from 210 to 300)
-            right_arm = s[210:] if len(s) >= 210 else ""
+            pos0 = extract_soma_len_from_header(hdr, default=len(s) // 2)
+            left_arm = s[: max(0, pos0 - excl_r)]
+            right_arm = s[pos0 + excl_r :] if len(s) > pos0 + excl_r else ""
             if left_arm:
                 f_out.write(f">distal_L_{idx}\n{left_arm}\n")
                 total_len += len(left_arm)
@@ -181,7 +176,7 @@ def run_meme_grid(
     sliced_fastas = {}
     for r in selected_radii:
         r_fa = sliced_dir / f"windows_radius_{r}bp.fasta"
-        write_sliced_fasta(records, r, r_fa, center_soma_len=150)
+        write_sliced_fasta(records, r, r_fa)
         sliced_fastas[r] = r_fa
 
     runs_dir = out_path / "runs"

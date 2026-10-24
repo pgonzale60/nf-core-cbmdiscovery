@@ -5,6 +5,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+from cbm_defaults import SSOT
 
 
 def get_cyclic_prefixes(repeat: str) -> list[str]:
@@ -65,7 +66,7 @@ def banded_alignment_identity(
 
 def reconstruct_germline_consensus(
     germline_extensions: list[str],
-    max_len: int = 150,
+    max_len: int | None = SSOT["max_germ_flank_len"],
     anchor_seq: str = "",
     local_reads: list[str] | None = None,
     mate_reads: list[str] | None = None,
@@ -73,7 +74,7 @@ def reconstruct_germline_consensus(
 ) -> tuple[str, float]:
     """Reconstruct [+1 .. +max_len] germline consensus via vsearch (Case A) or fermi-lite (Case B).
 
-    Returns (consensus_seq, branch_coherence).
+    If max_len is None (e.g. Illumina untrimmed mode), returns the full assembled germline extension.
     """
     if not germline_extensions:
         return "", 0.0
@@ -87,9 +88,10 @@ def reconstruct_germline_consensus(
 
     all_mates = list(local_reads or []) + list(mate_reads or [])
     consensus_seq = ""
+    target_len = max_len if max_len is not None else SSOT["max_germ_flank_len"]
 
-    # Case A: Direct Full-Length Overhangs (>= 2 extensions with length >= max_len)
-    long_exts = [e for e in germline_extensions if len(e) >= max_len]
+    # Case A: Direct Full-Length Overhangs (>= 2 extensions with length >= target_len)
+    long_exts = [e for e in germline_extensions if len(e) >= target_len]
     if len(long_exts) >= 2:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
@@ -97,7 +99,8 @@ def reconstruct_germline_consensus(
             cons_path = tmp_path / "cons.fa"
             with open(fa_path, "w", encoding="utf-8") as f_fa:
                 for idx, ext in enumerate(long_exts):
-                    f_fa.write(f">ext_{idx}\n{ext[:max_len]}\n")
+                    s_ext = ext[:max_len] if max_len is not None else ext
+                    f_fa.write(f">ext_{idx}\n{s_ext}\n")
 
             cmd = [
                 vsearch_bin,
@@ -133,11 +136,11 @@ def reconstruct_germline_consensus(
                 ]
                 if lines:
                     c = "".join(lines).replace("-", "").replace(".", "").upper()
-                    if len(c) >= max_len:
-                        consensus_seq = c[:max_len]
+                    if len(c) >= target_len:
+                        consensus_seq = c[:max_len] if max_len is not None else c
 
     # Case B: Assembly via fermi-lite (fml-asm)
-    if len(consensus_seq) < max_len and (anchor_seq or all_mates):
+    if len(consensus_seq) < target_len and (anchor_seq or all_mates):
         reads_to_assemble = list(all_mates)
         for ext in germline_extensions[:200]:
             r_full = (anchor_seq[-50:] if anchor_seq else "") + ext
@@ -151,9 +154,10 @@ def reconstruct_germline_consensus(
             fq_path = tmp_path / "local_pool.fastq"
             with open(fq_path, "w", encoding="utf-8") as f_fq:
                 if anchor_seq:
+                    seed_cap = SSOT["max_soma_flank_len"]
                     a_seed = (
-                        anchor_seq[-150:]
-                        if len(anchor_seq) >= 150
+                        anchor_seq[-seed_cap:]
+                        if len(anchor_seq) >= seed_cap
                         else anchor_seq
                     )
                     for s_idx in range(3):
@@ -197,14 +201,14 @@ def reconstruct_germline_consensus(
                         if idx >= 0:
                             after = utg[idx + p_len :]
                             if len(after) > len(consensus_seq):
-                                consensus_seq = after[:max_len]
+                                consensus_seq = after[:max_len] if max_len is not None else after
                         rc_utg = revcomp(utg)
                         idx_rc = rc_utg.find(probe)
                         if idx_rc >= 0:
                             after = rc_utg[idx_rc + p_len :]
                             if len(after) > len(consensus_seq):
-                                consensus_seq = after[:max_len]
-                    if len(consensus_seq) >= max_len:
+                                consensus_seq = after[:max_len] if max_len is not None else after
+                    if len(consensus_seq) >= target_len:
                         break
             elif unitigs:
                 # Without anchor_seq, pick unitig matching germline extension prefix
@@ -212,20 +216,22 @@ def reconstruct_germline_consensus(
                 for utg in unitigs:
                     if ext0 in utg:
                         idx = utg.find(ext0)
-                        sub = utg[idx : idx + max_len]
+                        sub = utg[idx : idx + max_len] if max_len is not None else utg[idx:]
                         if len(sub) > len(consensus_seq):
                             consensus_seq = sub
                     elif ext0 in revcomp(utg):
                         rc_utg = revcomp(utg)
                         idx = rc_utg.find(ext0)
-                        sub = rc_utg[idx : idx + max_len]
+                        sub = rc_utg[idx : idx + max_len] if max_len is not None else rc_utg[idx:]
                         if len(sub) > len(consensus_seq):
                             consensus_seq = sub
 
     # Fallback to column-wise consensus if needed
     if not consensus_seq:
         chars = []
-        for pos in range(max_len):
+        max_ext_len = max((len(e) for e in germline_extensions), default=0)
+        col_limit = min(max_ext_len, max_len) if max_len is not None else max_ext_len
+        for pos in range(col_limit):
             bases = [ext[pos] for ext in germline_extensions if len(ext) > pos]
             if not bases:
                 break
@@ -251,11 +257,12 @@ def reconstruct_germline_consensus(
         )
 
     coherence = sum(identities) / len(identities) if identities else 0.0
-    return consensus_seq[:max_len], round(coherence, 4)
+    final_cons = consensus_seq[:max_len] if max_len is not None else consensus_seq
+    return final_cons, round(coherence, 4)
 
 
 def annotate_microhomology(
-    germline_consensus: str, repeat: str = "TTAGGC"
+    germline_consensus: str, repeat: str = SSOT["telomere_repeat"]
 ) -> tuple[int, str]:
     """Compare bases +1 .. +5 of germline consensus against cyclic prefixes of repeat.
 
@@ -275,17 +282,21 @@ def annotate_microhomology(
 def build_300bp_break_window(
     somatic_anchor: str,
     germline_consensus: str,
-    soma_flank_target: int = 150,
-    germ_flank_target: int = 150,
+    soma_flank_target: int | None = SSOT["max_soma_flank_len"],
+    germ_flank_target: int | None = SSOT["max_germ_flank_len"],
 ) -> str:
-    """Construct 300 bp break window centered at Position 0:
+    """Construct break window centered at Position 0:
 
     [-soma_flank_target .. 0] Retained Somatic + [+1 .. +germ_flank_target] Eliminated Germline.
     """
     soma_flank = (
         somatic_anchor[-soma_flank_target:]
-        if len(somatic_anchor) >= soma_flank_target
+        if (soma_flank_target is not None and len(somatic_anchor) >= soma_flank_target)
         else somatic_anchor
     )
-    germ_flank = germline_consensus[:germ_flank_target]
+    germ_flank = (
+        germline_consensus[:germ_flank_target]
+        if germ_flank_target is not None
+        else germline_consensus
+    )
     return soma_flank + germ_flank

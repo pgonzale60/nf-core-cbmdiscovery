@@ -11,6 +11,7 @@ _LIB_DIR = Path(__file__).resolve().parent.parent / "lib"
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
+from cbm_defaults import SSOT  # noqa: E402
 from teloanchor.cluster import cluster_anchors  # noqa: E402
 from teloanchor.detector import find_terminal_telomeric_tract  # noqa: E402
 from teloanchor.orient import normalize_and_trim_flank  # noqa: E402
@@ -37,8 +38,14 @@ def parse_args():
     )
     parser.add_argument(
         "--telomere-repeat",
-        default="TTAGGC",
-        help="Canonical telomeric repeat (default: TTAGGC)",
+        default=SSOT["telomere_repeat"],
+        help="Canonical telomeric repeat",
+    )
+    parser.add_argument(
+        "--max-flank-len",
+        type=int,
+        default=SSOT["max_soma_flank_len"],
+        help="Maximum somatic flank length on HiFi (untrimmed on Illumina)",
     )
     parser.add_argument(
         "--output-fasta",
@@ -54,13 +61,13 @@ def parse_args():
         "--min-cluster-size",
         type=int,
         default=None,
-        help="Minimum reads per anchor cluster (default: 3 for illumina, 1 for hifi)",
+        help="Minimum reads per anchor cluster",
     )
     parser.add_argument(
         "--min-identity",
         type=float,
-        default=0.98,
-        help="Minimum sequence identity for clustering (default: 0.98)",
+        default=SSOT["stage1_min_identity"],
+        help="Minimum sequence identity for clustering",
     )
     parser.add_argument(
         "--threads",
@@ -94,7 +101,7 @@ def main():
     args = parse_args()
     platform = args.platform.lower()
     repeat = args.telomere_repeat.upper()
-    max_flank = 150 if platform == "hifi" else 150
+    max_flank = args.max_flank_len if platform == "hifi" else None
 
     total_reads = 0
     fished_observations = []
@@ -113,7 +120,11 @@ def main():
     min_cluster = (
         args.min_cluster_size
         if args.min_cluster_size is not None
-        else (3 if platform == "illumina" else 1)
+        else (
+            SSOT["min_cluster_size_illumina"]
+            if platform == "illumina"
+            else SSOT["min_cluster_size_hifi"]
+        )
     )
 
     clusters = cluster_anchors(

@@ -20,7 +20,9 @@ Usage:
 
 import argparse
 import hashlib
+import json
 import pathlib
+import pprint
 import re
 import subprocess
 import sys
@@ -28,6 +30,42 @@ import sys
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 MODULES_DIR = REPO_ROOT / "modules" / "local"
+SSOT_JSON = REPO_ROOT / "conf" / "cbm_params.json"
+
+
+def sync_module_ssot_defaults(mod_dir: pathlib.Path, check_only: bool = False) -> bool:
+    """Sync conf/cbm_params.json into resources/usr/lib/cbm_defaults.py for container portability."""
+    if not SSOT_JSON.is_file():
+        return False
+    params = json.loads(SSOT_JSON.read_text(encoding="utf-8"))
+    lib_dir = mod_dir / "resources" / "usr" / "lib"
+    lib_dir.mkdir(parents=True, exist_ok=True)
+    target_py = lib_dir / "cbm_defaults.py"
+    formatted = pprint.pformat(params, width=88, sort_dicts=True)
+    content = (
+        '"""Auto-synced Single Source of Truth (SSOT) parameters from conf/cbm_params.json."""\n\n'
+        "import json\n"
+        "from pathlib import Path\n\n"
+        f"_FALLBACK_SSOT = {formatted}\n\n\n"
+        "def load_ssot_params() -> dict:\n"
+        '    """Load canonical parameters from conf/cbm_params.json if accessible, else synced SSOT."""\n'
+        "    cur = Path(__file__).resolve().parent\n"
+        "    for _ in range(8):\n"
+        '        cand = cur / "conf" / "cbm_params.json"\n'
+        "        if cand.is_file():\n"
+        '            return json.loads(cand.read_text(encoding="utf-8"))\n'
+        "        if cur.parent == cur:\n"
+        "            break\n"
+        "        cur = cur.parent\n"
+        "    return dict(_FALLBACK_SSOT)\n\n\n"
+        "SSOT = load_ssot_params()\n"
+    )
+    existing = target_py.read_text(encoding="utf-8") if target_py.is_file() else ""
+    if existing != content:
+        if not check_only:
+            target_py.write_text(content, encoding="utf-8")
+        return True
+    return False
 
 # Stale Groovy lines previously used for dynamic fingerprinting
 DYNAMIC_GROOVY_RE = re.compile(
@@ -73,10 +111,11 @@ def compute_module_sha(mod_dir: pathlib.Path) -> tuple[str, str]:
 
 
 def stamp_main_nf(mod_dir: pathlib.Path, check_only: bool = False) -> bool:
-    """Ensure main.nf contains the current literal Script-SHA comment.
+    """Ensure cbm_defaults.py and main.nf contain the current SSOT and Script-SHA comment.
 
-    Returns True if main.nf was modified (or needs modification when check_only=True).
+    Returns True if cbm_defaults.py or main.nf was modified (or needs modification when check_only=True).
     """
+    ssot_changed = sync_module_ssot_defaults(mod_dir, check_only=check_only)
     main_nf = mod_dir / "main.nf"
     original_text = main_nf.read_text(encoding="utf-8")
     primary_bin, sha16 = compute_module_sha(mod_dir)
@@ -114,14 +153,14 @@ def stamp_main_nf(mod_dir: pathlib.Path, check_only: bool = False) -> bool:
         )
 
     final_text = script_part + stub_part
-    changed = final_text != original_text
-    if changed and not check_only:
+    changed = (final_text != original_text) or ssot_changed
+    if final_text != original_text and not check_only:
         main_nf.write_text(final_text, encoding="utf-8")
     return changed
 
 
 def get_staged_module_dirs() -> list[pathlib.Path]:
-    """Return module dirs that have staged changes in git."""
+    """Return module dirs that have staged changes in git (or all if conf/cbm_params.json changed)."""
     res = subprocess.run(
         ["git", "diff", "--cached", "--name-only"],
         cwd=REPO_ROOT,
@@ -129,8 +168,12 @@ def get_staged_module_dirs() -> list[pathlib.Path]:
         text=True,
         check=True,
     )
+    staged_lines = res.stdout.splitlines()
+    if any("cbm_params.json" in line for line in staged_lines):
+        return discover_python_modules()
+
     staged_mods = set()
-    for line in res.stdout.splitlines():
+    for line in staged_lines:
         candidate = (REPO_ROOT / line).resolve()
         try:
             candidate.relative_to(MODULES_DIR)
@@ -166,7 +209,11 @@ def main() -> int:
         for mod_dir in target_mods:
             if stamp_main_nf(mod_dir, check_only=False):
                 main_nf_rel = (mod_dir / "main.nf").relative_to(REPO_ROOT)
-                subprocess.run(["git", "add", str(main_nf_rel)], cwd=REPO_ROOT, check=True)
+                defaults_py = mod_dir / "resources" / "usr" / "lib" / "cbm_defaults.py"
+                to_add = [str(main_nf_rel)]
+                if defaults_py.is_file():
+                    to_add.append(str(defaults_py.relative_to(REPO_ROOT)))
+                subprocess.run(["git", "add"] + to_add, cwd=REPO_ROOT, check=True)
                 stamped.append(_mod_label(mod_dir))
         if stamped:
             print(f"[pre-commit] Auto-stamped Script-SHA in main.nf for: {', '.join(stamped)}")
