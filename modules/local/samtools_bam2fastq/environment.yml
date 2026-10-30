@@ -1,0 +1,7 @@
+name: samtools_bam2fastq
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - bioconda::samtools=1.21
+  - conda-forge::gzip=1.13
