@@ -231,61 +231,47 @@ workflow {
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
+def cbm_publish_path(meta, default_dir) {
+    if (!params.per_species_outdir) {
+        return default_dir
+    }
+    def specimen = meta.tolid ?: (meta.specimen_id ?: meta.id)
+    if (meta.species && specimen && meta.species != specimen) {
+        return "${meta.species}/${specimen}/analysis/cbmdiscovery"
+    } else if (meta.species) {
+        return "${meta.species}/analysis/cbmdiscovery"
+    } else {
+        return "${meta.id}/analysis/cbmdiscovery"
+    }
+}
+
 output {
     candidate_anchors {
-        path { meta, _file ->
-            params.per_species_outdir
-                ? "${meta.species ?: meta.id}/analysis/cbmdiscovery"
-                : "somatic_anchors"
-        }
+        path { meta, _file -> cbm_publish_path(meta, "somatic_anchors") }
         mode params.publish_dir_mode
     }
     break_windows {
-        path { meta, _file ->
-            params.per_species_outdir
-                ? "${meta.species ?: meta.id}/analysis/cbmdiscovery"
-                : "germline_junctions"
-        }
+        path { meta, _file -> cbm_publish_path(meta, "germline_junctions") }
         mode params.publish_dir_mode
     }
     junction_catalog {
-        path { meta, _file ->
-            params.per_species_outdir
-                ? "${meta.species ?: meta.id}/analysis/cbmdiscovery"
-                : "germline_junctions"
-        }
+        path { meta, _file -> cbm_publish_path(meta, "germline_junctions") }
         mode params.publish_dir_mode
     }
     census_json {
-        path { meta, _file ->
-            params.per_species_outdir
-                ? "${meta.species ?: meta.id}/analysis/cbmdiscovery"
-                : "germline_junctions"
-        }
+        path { meta, _file -> cbm_publish_path(meta, "germline_junctions") }
         mode params.publish_dir_mode
     }
     best_core_motif {
-        path { meta, _file ->
-            params.per_species_outdir
-                ? "${meta.species ?: meta.id}/analysis/cbmdiscovery"
-                : "core_motif"
-        }
+        path { meta, _file -> cbm_publish_path(meta, "core_motif") }
         mode params.publish_dir_mode
     }
     bipartite_spacing {
-        path { meta, _file ->
-            params.per_species_outdir
-                ? "${meta.species ?: meta.id}/analysis/cbmdiscovery"
-                : "bipartite_profiler"
-        }
+        path { meta, _file -> cbm_publish_path(meta, "bipartite_profiler") }
         mode params.publish_dir_mode
     }
     discovery_report {
-        path { meta, _file ->
-            params.per_species_outdir
-                ? "${meta.species ?: meta.id}/analysis/cbmdiscovery"
-                : "bipartite_profiler"
-        }
+        path { meta, _file -> cbm_publish_path(meta, "bipartite_profiler") }
         mode params.publish_dir_mode
     }
     // Cohort-level outputs:
