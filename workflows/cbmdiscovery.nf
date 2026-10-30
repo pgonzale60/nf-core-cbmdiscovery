@@ -5,6 +5,7 @@
 */
 include { FASTQC                 } from '../modules/nf-core/fastqc/main'
 include { MULTIQC                } from '../modules/nf-core/multiqc/main'
+include { SAMTOOLS_BAM2FASTQ     } from '../modules/local/samtools_bam2fastq/main'
 include { FISHTELOMERICANCHORS   } from '../modules/local/fishtelomericanchors/main'
 include { BAITGERMLINEJUNCTIONS  } from '../modules/local/baitgermlinejunctions/main'
 include { MEMECOREGRID           } from '../modules/local/memecoregrid/main'
@@ -35,16 +36,31 @@ workflow CBMDISCOVERY {
     def ch_multiqc_files = channel.empty()
 
     //
+    // STAGE 0: On-the-fly unaligned BAM conversion
+    //
+    ch_reads_branch = ch_samplesheet.branch { meta, reads ->
+        def r1 = meta.single_end ? reads : reads[0]
+        bam: r1.name.endsWith('.bam')
+        fastq: true
+    }
+
+    SAMTOOLS_BAM2FASTQ(ch_reads_branch.bam)
+    ch_versions = ch_versions.mix(SAMTOOLS_BAM2FASTQ.out.versions_samtools.first())
+
+    ch_normalized_samplesheet = ch_reads_branch.fastq
+        .mix(SAMTOOLS_BAM2FASTQ.out.fastq)
+
+    //
     // MODULE: Run FastQC
     //
-    FASTQC(ch_samplesheet)
+    FASTQC(ch_normalized_samplesheet)
     ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.map{ _meta, file -> file })
 
     //
     // STAGE 1: Fish telomeric reads and construct candidate somatic anchors
     //
     FISHTELOMERICANCHORS (
-        ch_samplesheet,
+        ch_normalized_samplesheet,
         params.telomere_repeat
     )
 
@@ -52,7 +68,7 @@ workflow CBMDISCOVERY {
     // STAGE 2 & 3: K-mer baiting, germline reconstruction, microhomology & junction census
     //
     ch_bait_input = FISHTELOMERICANCHORS.out.candidate_anchors
-        .join(ch_samplesheet)
+        .join(ch_normalized_samplesheet)
 
     BAITGERMLINEJUNCTIONS (
         ch_bait_input,
