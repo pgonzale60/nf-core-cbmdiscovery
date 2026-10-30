@@ -228,8 +228,8 @@ def is_telomeric_repeat_echo(
             if mm1_count >= 2:
                 best_cov_1mm = max(best_cov_1mm, sum(covered) / n)
 
-    is_echo = (exact_frac >= SSOT["telomeric_echo_exact_kmer_cutoff"]) or (
-        n >= 8 and best_cov_1mm >= SSOT["telomeric_echo_1mm_cov_cutoff"]
+    is_echo = (exact_frac > SSOT["telomeric_echo_exact_kmer_cutoff"]) or (
+        n >= 18 and best_cov_1mm >= SSOT["telomeric_echo_1mm_cov_cutoff"]
     )
     return is_echo, round(max(exact_frac, best_cov_1mm), 4)
 

@@ -124,4 +124,3 @@ def bait_reads(
             hits = get_hits(seq)
             for a_id in hits:
                 yield {"anchor_id": a_id, "read_id": qname, "seq": seq}
-
