@@ -49,7 +49,15 @@ workflow NFCORE_CBMDISCOVERY {
     )
 
     emit:
-    multiqc_report = CBMDISCOVERY.out.multiqc_report // channel: /path/to/multiqc_report.html
+    candidate_anchors = CBMDISCOVERY.out.candidate_anchors
+    break_windows     = CBMDISCOVERY.out.break_windows
+    junction_catalog  = CBMDISCOVERY.out.junction_catalog
+    census_json       = CBMDISCOVERY.out.census_json
+    best_core_motif   = CBMDISCOVERY.out.best_core_motif
+    bipartite_spacing = CBMDISCOVERY.out.bipartite_spacing
+    discovery_report  = CBMDISCOVERY.out.discovery_report
+    multiqc_report    = CBMDISCOVERY.out.multiqc_report // channel: /path/to/multiqc_report.html
+    versions          = CBMDISCOVERY.out.versions
 }
 
 /*
@@ -59,6 +67,8 @@ workflow NFCORE_CBMDISCOVERY {
 */
 
 workflow {
+
+    main:
 
     // 0. CLI Help handling
     if (params.help) {
@@ -94,7 +104,7 @@ workflow {
             if (lines.size() < 2) {
                 validation_errors.add("Provided --input samplesheet has no sample rows: ${params.input}")
             } else {
-                def header = lines[0].tokenize(',').collect { col -> col.trim() }
+                def header = lines[0].split(',', -1).collect { col -> col.trim() }
                 def sample_idx   = header.indexOf('sample')
                 def platform_idx = header.indexOf('platform')
                 def reads1_idx   = header.indexOf('reads_1')
@@ -108,7 +118,7 @@ workflow {
                         def trimmed = line.trim()
                         if (!trimmed || trimmed.startsWith('#')) return
 
-                        def cols = line.tokenize(',').collect { col -> col.trim() }
+                        def cols = line.split(',', -1).collect { col -> col.trim() }
                         def sample_id = cols[sample_idx] ?: "row_${row_num}"
                         def platform  = cols[platform_idx]?.toLowerCase()
 
@@ -202,6 +212,91 @@ workflow {
         params.monochrome_logs,
         NFCORE_CBMDISCOVERY.out.multiqc_report
     )
+
+    publish:
+    candidate_anchors = NFCORE_CBMDISCOVERY.out.candidate_anchors
+    break_windows     = NFCORE_CBMDISCOVERY.out.break_windows
+    junction_catalog  = NFCORE_CBMDISCOVERY.out.junction_catalog
+    census_json       = NFCORE_CBMDISCOVERY.out.census_json
+    best_core_motif   = NFCORE_CBMDISCOVERY.out.best_core_motif
+    bipartite_spacing = NFCORE_CBMDISCOVERY.out.bipartite_spacing
+    discovery_report  = NFCORE_CBMDISCOVERY.out.discovery_report
+    multiqc_report    = NFCORE_CBMDISCOVERY.out.multiqc_report
+    versions          = NFCORE_CBMDISCOVERY.out.versions
+}
+
+/*
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    WORKFLOW OUTPUT PUBLISHING (NEXTFLOW 26+)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+*/
+
+output {
+    candidate_anchors {
+        path { meta, _file ->
+            params.per_species_outdir
+                ? "${meta.species ?: meta.id}/analysis/cbmdiscovery"
+                : "somatic_anchors"
+        }
+        mode params.publish_dir_mode
+    }
+    break_windows {
+        path { meta, _file ->
+            params.per_species_outdir
+                ? "${meta.species ?: meta.id}/analysis/cbmdiscovery"
+                : "germline_junctions"
+        }
+        mode params.publish_dir_mode
+    }
+    junction_catalog {
+        path { meta, _file ->
+            params.per_species_outdir
+                ? "${meta.species ?: meta.id}/analysis/cbmdiscovery"
+                : "germline_junctions"
+        }
+        mode params.publish_dir_mode
+    }
+    census_json {
+        path { meta, _file ->
+            params.per_species_outdir
+                ? "${meta.species ?: meta.id}/analysis/cbmdiscovery"
+                : "germline_junctions"
+        }
+        mode params.publish_dir_mode
+    }
+    best_core_motif {
+        path { meta, _file ->
+            params.per_species_outdir
+                ? "${meta.species ?: meta.id}/analysis/cbmdiscovery"
+                : "core_motif"
+        }
+        mode params.publish_dir_mode
+    }
+    bipartite_spacing {
+        path { meta, _file ->
+            params.per_species_outdir
+                ? "${meta.species ?: meta.id}/analysis/cbmdiscovery"
+                : "bipartite_profiler"
+        }
+        mode params.publish_dir_mode
+    }
+    discovery_report {
+        path { meta, _file ->
+            params.per_species_outdir
+                ? "${meta.species ?: meta.id}/analysis/cbmdiscovery"
+                : "bipartite_profiler"
+        }
+        mode params.publish_dir_mode
+    }
+    // Cohort-level outputs:
+    multiqc_report {
+        path { "pipeline_info" }
+        mode params.publish_dir_mode
+    }
+    versions {
+        path { "pipeline_info" }
+        mode params.publish_dir_mode
+    }
 }
 
 /*

@@ -38,8 +38,8 @@ workflow CBMDISCOVERY {
     //
     // STAGE 0: On-the-fly unaligned BAM conversion
     //
-    ch_reads_branch = ch_samplesheet.branch { meta, reads ->
-        def r1 = meta.single_end ? reads : reads[0]
+    ch_reads_branch = ch_samplesheet.branch { _meta, reads ->
+        def r1 = reads instanceof List ? reads[0] : reads
         bam: r1.name.endsWith('.bam')
         fastq: true
     }
@@ -158,13 +158,16 @@ workflow CBMDISCOVERY {
     telomeric_reads_fastq = FISHTELOMERICANCHORS.out.telomeric_reads_fastq
     baited_reads_fastq    = BAITGERMLINEJUNCTIONS.out.baited_reads_fastq
     candidate_anchors     = FISHTELOMERICANCHORS.out.candidate_anchors
+    break_windows         = BAITGERMLINEJUNCTIONS.out.break_windows_fasta
     break_windows_fasta   = BAITGERMLINEJUNCTIONS.out.break_windows_fasta
     junction_catalog      = BAITGERMLINEJUNCTIONS.out.junction_catalog
     census_json           = BAITGERMLINEJUNCTIONS.out.census_json
     best_core_motif       = MEMECOREGRID.out.best_core_motif
     grid_summary_tsv      = MEMECOREGRID.out.grid_summary_tsv
     best_auxiliary_motif  = BIPARTITEPROFILER.out.best_auxiliary_motif
+    bipartite_spacing     = BIPARTITEPROFILER.out.bipartite_spacing_tsv
     bipartite_spacing_tsv = BIPARTITEPROFILER.out.bipartite_spacing_tsv
+    discovery_report      = BIPARTITEPROFILER.out.discovery_report_md
     discovery_report_md   = BIPARTITEPROFILER.out.discovery_report_md
     multiqc_report        = MULTIQC.out.report.map { _meta, report -> [report] }.toList()
     versions              = ch_collated_versions
