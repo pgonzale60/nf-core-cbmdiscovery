@@ -234,6 +234,20 @@ anchor_5_r150_p0_93  +  92  1e-5
         is_echo_cbm, _ = is_telomeric_repeat_echo("TTCTGGTTTAGGCTCAGCCTATGCCATAA")
         self.assertFalse(is_echo_cbm)
 
+        # Authentic Caenorhabditis core motifs must NOT be rejected
+        is_echo_auri, _ = is_telomeric_repeat_echo("TTTTTCGCTTAGCC")
+        self.assertFalse(is_echo_auri)
+
+        is_echo_mono, _ = is_telomeric_repeat_echo("TTTCGCTTAGGCC")
+        self.assertFalse(is_echo_mono)
+
+        is_echo_parv, _ = is_telomeric_repeat_echo("TATCAGACTCGCATTTTGCTTGCT")
+        self.assertFalse(is_echo_parv)
+
+        # Spurious long telomeric arrays must be rejected
+        is_echo_spurious, _ = is_telomeric_repeat_echo("AGTCTTAGGCTTAGGCTTAGGCTCATGCG")
+        self.assertTrue(is_echo_spurious)
+
         # 2. parse_meme_txt must hard-reject telomeric echo with composite_score = 0.0
         row_12 = "\n".join(["  1.0 0.0 0.0 0.0"] * 12)
         telo_meme = f"""MEME version 4
@@ -263,4 +277,3 @@ s1 + 25 1e-8
 
 if __name__ == "__main__":
     unittest.main()
-

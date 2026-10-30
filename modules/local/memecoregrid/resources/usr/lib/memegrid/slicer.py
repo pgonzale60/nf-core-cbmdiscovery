@@ -136,4 +136,3 @@ def write_sliced_fasta(
                 f.write(f">{clean_header}_r{radius}_p0_{pos0}\n{sliced}\n")
                 count += 1
     return count
-

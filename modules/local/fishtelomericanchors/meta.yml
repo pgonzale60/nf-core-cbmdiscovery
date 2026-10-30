@@ -19,7 +19,7 @@ input:
         description: Raw sequencing FASTQ file(s)
   - - telomere_repeat:
         type: string
-        description: Canonical telomeric repeat motif (default: TTAGGC)
+        description: "Canonical telomeric repeat motif (default: TTAGGC)"
 output:
   - candidate_anchors:
       - meta:

@@ -23,16 +23,16 @@ input:
         description: Raw sequencing FASTQ file(s)
   - - telomere_repeat:
         type: string
-        description: Canonical telomeric repeat motif (default: TTAGGC)
+        description: "Canonical telomeric repeat motif (default: TTAGGC)"
   - - kmer_size:
         type: integer
-        description: K-mer bait size (default: 31)
+        description: "K-mer bait size (default: 31)"
   - - min_germ_reads:
         type: integer
-        description: Minimum germline read-through reads (default: 2)
+        description: "Minimum germline read-through reads (default: 2)"
   - - min_telo_reads:
         type: integer
-        description: Minimum telomeric reads supporting somatic branch (default: 5)
+        description: "Minimum telomeric reads supporting somatic branch (default: 5)"
 output:
   - break_windows_fasta:
       - meta:
