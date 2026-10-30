@@ -44,6 +44,12 @@
                 "pattern": "^\\S+$",
                 "errorMessage": "ToLID identifier cannot contain spaces",
                 "meta": ["tolid"]
+            },
+            "specimen_id": {
+                "type": "string",
+                "pattern": "^\\S+$",
+                "errorMessage": "Specimen or strain identifier cannot contain spaces",
+                "meta": ["specimen_id"]
             }
         },
         "required": ["sample", "platform", "reads_1"]
