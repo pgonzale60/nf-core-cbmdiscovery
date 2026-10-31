@@ -274,6 +274,87 @@ s1 + 25 1e-8
         # Cleavage junction [-6..+6] (144..156) must remain unmasked
         self.assertEqual(masked[144:156], win[144:156])
 
+    def test_single_and_zero_sequence_graceful_handling(self):
+        import json
+        import tempfile
+        from memegrid.grid_runner import export_grid_outputs, run_meme_grid
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_p = pathlib.Path(tmp_dir)
+            single_fa = tmp_p / "single_seq.fasta"
+            single_fa.write_text(">anchor_1 soma_len=150\n" + "A" * 150 + "C" * 150 + "\n")
+
+            out_dir = tmp_p / "meme_grid_work"
+            best_motif, grid_results = run_meme_grid(single_fa, out_dir)
+            self.assertIsNone(best_motif)
+            self.assertEqual(grid_results, [])
+
+            out_meme = tmp_p / "best_core_motif.meme"
+            out_tsv = tmp_p / "core_grid_summary.tsv"
+            out_json = tmp_p / "core_motif_metrics.json"
+            out_bg = tmp_p / "best_background.bfile"
+
+            export_grid_outputs(
+                best_motif=best_motif,
+                grid_results=grid_results,
+                output_meme=out_meme,
+                summary_tsv=out_tsv,
+                metrics_json=out_json,
+                output_background=out_bg,
+            )
+
+            self.assertTrue(out_meme.exists())
+            self.assertIn("MEME version 4", out_meme.read_text())
+
+            self.assertTrue(out_tsv.exists())
+            tsv_lines = out_tsv.read_text().strip().splitlines()
+            self.assertEqual(len(tsv_lines), 1)  # Only header
+            self.assertIn("composite_score", tsv_lines[0])
+
+            self.assertTrue(out_json.exists())
+            self.assertEqual(json.loads(out_json.read_text()), {})
+
+            self.assertTrue(out_bg.exists())
+            self.assertIn("# 0-order Markov background", out_bg.read_text())
+
+            # Test 0 sequences
+            zero_fa = tmp_p / "zero_seq.fasta"
+            zero_fa.write_text("")
+            best_0, res_0 = run_meme_grid(zero_fa, tmp_p / "meme_grid_work_0")
+            self.assertIsNone(best_0)
+            self.assertEqual(res_0, [])
+
+    def test_subprocess_surfaces_stderr_on_failure(self):
+        from unittest.mock import patch
+        import subprocess
+        from memegrid.grid_runner import _run_single_condition
+
+        cond = {
+            "id": "P1_test_fail",
+            "radius": 30,
+            "mod": "zoops",
+            "revcomp": True,
+            "w_args": ["-minw", "8", "-maxw", "30"],
+            "w_label": "w8_30",
+        }
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = subprocess.CalledProcessError(
+                returncode=1,
+                cmd=["meme"],
+                stderr="Your (primary) dataset must contain at least 2 sequences",
+            )
+            with self.assertRaises(RuntimeError) as ctx:
+                _run_single_condition(
+                    meme_bin="/usr/bin/meme",
+                    cond=cond,
+                    r_fa_str="/tmp/test.fasta",
+                    cond_dir_str="/tmp/cond_dir",
+                    total_seqs=1,
+                )
+            self.assertIn("Your (primary) dataset must contain at least 2 sequences", str(ctx.exception))
+            self.assertIn("P1_test_fail", str(ctx.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -241,6 +241,34 @@ class TestBipartiteProfiler(unittest.TestCase):
         self.assertEqual(class_map["sat"], "TANDEM_SATELLITE_ARRAY")
         self.assertEqual(census["n_satellite_excluded"], 1)
 
+    def test_aux_grid_surfaces_stderr_on_failure(self):
+        from unittest.mock import patch
+        import subprocess
+        from bipartite.aux_grid import _run_single_aux_condition
+
+        cond = {
+            "id": "A03_test_fail",
+            "mod": "zoops",
+            "revcomp": True,
+            "w_args": ["-w", "6"],
+        }
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = subprocess.CalledProcessError(
+                returncode=1,
+                cmd=["meme"],
+                stderr="Your (primary) dataset must contain at least 2 sequences",
+            )
+            with self.assertRaises(RuntimeError) as ctx:
+                _run_single_aux_condition(
+                    meme_bin="/usr/bin/meme",
+                    cond=cond,
+                    masked_fa_str="/tmp/test_masked.fasta",
+                    cond_dir_str="/tmp/aux_cond_dir",
+                )
+            self.assertIn("Your (primary) dataset must contain at least 2 sequences", str(ctx.exception))
+            self.assertIn("A03_test_fail", str(ctx.exception))
+
 
 if __name__ == "__main__":
     unittest.main()
