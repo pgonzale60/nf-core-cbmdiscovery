@@ -160,14 +160,14 @@ def main():
     work_dir = Path("bipartite_work")
     work_dir.mkdir(exist_ok=True)
 
-    # Handle negative control / empty break windows (0 sequences)
-    if not seq_names:
+    # Handle negative control / empty break windows / single sequence (< 2 sequences)
+    if len(seq_names) < 2:
         with open(args.output_aux_meme, "w", encoding="utf-8") as f:
             f.write("MEME version 4\n\nALPHABET= ACGT\n")
         with open(args.output_masked_fasta, "w", encoding="utf-8") as f:
             pass
         spacing_rows, spacing_summary = profile_bipartite_spacing(
-            seq_names=[],
+            seq_names=seq_names,
             core_hits_by_seq={},
             aux_hits_by_seq=None,
             pos0_coord={},
@@ -181,7 +181,10 @@ def main():
             bipartite_summary=spacing_summary,
             output_report_md=args.output_report,
         )
-        print(f"[BIPARTITEPROFILER] Completed for {args.sample_id} (0 break windows found - negative control).")
+        print(
+            f"[BIPARTITEPROFILER] Completed for {args.sample_id} "
+            f"({len(seq_names)} break window(s) found - insufficient sequences for statistical motif discovery)."
+        )
         return
 
     # 1. Higher-order Markov background
@@ -194,29 +197,36 @@ def main():
 
     # 2. Native Multi-Motif Soft-Erasure Discovery (MEME -nmotifs 3)
     meme_out_dir = work_dir / "meme_soft_erasure_out"
-    subprocess.run(
-        [
-            "meme",
-            args.break_windows,
-            "-dna",
-            "-mod",
-            "zoops",
-            "-nmotifs",
-            "3",
-            "-minw",
-            "6",
-            "-maxw",
-            "25",
-            "-revcomp",
-            "-bfile",
-            str(bg_file),
-            "-oc",
-            str(meme_out_dir),
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=True,
-    )
+    try:
+        subprocess.run(
+            [
+                "meme",
+                args.break_windows,
+                "-dna",
+                "-mod",
+                "zoops",
+                "-nmotifs",
+                "3",
+                "-minw",
+                "6",
+                "-maxw",
+                "25",
+                "-revcomp",
+                "-bfile",
+                str(bg_file),
+                "-oc",
+                str(meme_out_dir),
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=True,
+        )
+    except subprocess.CalledProcessError as e:
+        err_msg = e.stderr.strip() if e.stderr else "Unknown error"
+        raise RuntimeError(
+            f"Soft-erasure MEME discovery failed with exit code {e.returncode}: {err_msg}"
+        ) from e
 
     # 3. Spatial Spacing Validation via SpaMo
     meme_xml = meme_out_dir / "meme.xml"

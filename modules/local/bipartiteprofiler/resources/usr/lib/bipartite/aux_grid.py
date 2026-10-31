@@ -163,12 +163,19 @@ def _run_single_aux_condition(
             cmd.extend(["-bfile", str(bfile)])
         if cond["revcomp"]:
             cmd.append("-revcomp")
-        subprocess.run(
-            cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=True,
-        )
+        try:
+            subprocess.run(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            err_msg = e.stderr.strip() if e.stderr else "Unknown error"
+            raise RuntimeError(
+                f"Auxiliary MEME condition '{cid}' failed with exit code {e.returncode}: {err_msg}"
+            ) from e
 
     metrics = parse_aux_meme_results(str(meme_txt))
     if metrics:

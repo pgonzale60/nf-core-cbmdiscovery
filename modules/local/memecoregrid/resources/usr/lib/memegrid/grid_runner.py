@@ -74,12 +74,19 @@ def build_distal_flank_markov_backgrounds(
     bg_files: dict[int, str] = {}
     for m in candidate_orders:
         bg_path = output_dir / f"bg_m{m}.txt"
-        subprocess.run(
-            [fgm_bin, "-dna", "-m", str(m), str(distal_fa), str(bg_path)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=True,
-        )
+        try:
+            subprocess.run(
+                [fgm_bin, "-dna", "-m", str(m), str(distal_fa), str(bg_path)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            err_msg = e.stderr.strip() if e.stderr else "Unknown error"
+            raise RuntimeError(
+                f"fasta-get-markov (order {m}) failed with exit code {e.returncode}: {err_msg}"
+            ) from e
         bg_files[m] = str(bg_path)
 
     return candidate_orders, bg_files
@@ -117,12 +124,19 @@ def _run_single_condition(
         if cond["revcomp"]:
             cmd.append("-revcomp")
 
-        subprocess.run(
-            cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=True,
-        )
+        try:
+            subprocess.run(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            err_msg = e.stderr.strip() if e.stderr else "Unknown error"
+            raise RuntimeError(
+                f"MEME condition '{cid}' failed with exit code {e.returncode}: {err_msg}"
+            ) from e
 
     if meme_txt.exists():
         metrics = parse_meme_txt(
@@ -155,7 +169,9 @@ def run_meme_grid(
 
     records = load_fasta(break_windows_fasta)
     total_seqs = len(records)
-    if total_seqs == 0:
+    if total_seqs < 2:
+        with open(out_path / "best_background.bfile", "w", encoding="utf-8") as f:
+            f.write("# 0-order Markov background\nA 0.25\nC 0.25\nG 0.25\nT 0.25\n")
         return None, []
 
     meme_bin = shutil.which("meme")
@@ -300,10 +316,12 @@ def export_grid_outputs(
     output_background: str | Path | None = None,
 ):
     """Save best_core_motif.meme, core_grid_summary.tsv, core_motif_metrics.json, and best_background.bfile."""
+    out_meme_path = Path(output_meme)
+    out_meme_path.parent.mkdir(parents=True, exist_ok=True)
     if best_motif and os.path.exists(best_motif["meme_txt_path"]):
-        shutil.copy(best_motif["meme_txt_path"], output_meme)
+        shutil.copy(best_motif["meme_txt_path"], out_meme_path)
     else:
-        with open(output_meme, "w", encoding="utf-8") as f:
+        with open(out_meme_path, "w", encoding="utf-8") as f:
             f.write("MEME version 4\n\nALPHABET= ACGT\n")
 
     if (
@@ -311,12 +329,15 @@ def export_grid_outputs(
         and best_motif.get("bfile")
         and os.path.exists(best_motif["bfile"])
     ):
-        target_bg = output_background or (
-            Path(output_meme).parent / "best_background.bfile"
+        target_bg = Path(output_background) if output_background else (
+            out_meme_path.parent / "best_background.bfile"
         )
+        target_bg.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(best_motif["bfile"], target_bg)
     elif output_background:
-        with open(output_background, "w", encoding="utf-8") as f:
+        target_bg = Path(output_background)
+        target_bg.parent.mkdir(parents=True, exist_ok=True)
+        with open(target_bg, "w", encoding="utf-8") as f:
             f.write("# 0-order Markov background\nA 0.25\nC 0.25\nG 0.25\nT 0.25\n")
 
     fieldnames = [
@@ -325,12 +346,16 @@ def export_grid_outputs(
         "mean_ic", "consensus_entropy", "occupancy", "median_offset_to_pos0",
         "positional_iqr", "telomeric_echo_fraction", "rejection_flag", "composite_score",
     ]
-    with open(summary_tsv, "w", newline="", encoding="utf-8") as f:
+    out_tsv_path = Path(summary_tsv)
+    out_tsv_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_tsv_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(
             f, fieldnames=fieldnames, delimiter="\t", extrasaction="ignore"
         )
         writer.writeheader()
         writer.writerows(grid_results)
 
-    with open(metrics_json, "w", encoding="utf-8") as f:
+    out_json_path = Path(metrics_json)
+    out_json_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_json_path, "w", encoding="utf-8") as f:
         json.dump(best_motif or {}, f, indent=2)
