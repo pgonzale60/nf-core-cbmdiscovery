@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CBM Coverage and Chromosome Census Schema",
+  "description": "Formal JSON Schema (Draft 2020-12) for coverage_and_chromosome_census.json produced by BAITGERMLINEJUNCTIONS (baitgerm/census.py:deconvolve_and_census).",
+  "type": "object",
+  "required": [
+    "median_c_soma",
+    "median_c_germ",
+    "germline_fraction",
+    "n_breaks",
+    "n_germ_telo",
+    "estimated_germline_chromosomes",
+    "n_shared_telo",
+    "n_satellite_excluded"
+  ],
+  "properties": {
+    "median_c_soma": {
+      "type": "number",
+      "description": "Median somatic coverage across candidate break sites"
+    },
+    "median_c_germ": {
+      "type": "number",
+      "description": "Median germline coverage across candidate break sites"
+    },
+    "germline_fraction": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Estimated germline-to-total ratio"
+    },
+    "n_breaks": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of PDE break sites identified"
+    },
+    "n_germ_telo": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of germline native telomeres"
+    },
+    "estimated_germline_chromosomes": {
+      "type": "number",
+      "minimum": 0.0,
+      "description": "n_germ_telo / 2"
+    },
+    "n_shared_telo": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of shared native telomeres"
+    },
+    "n_satellite_excluded": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of loci classified as tandem satellite arrays"
+    }
+  },
+  "additionalProperties": false
+}
