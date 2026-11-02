@@ -74,11 +74,30 @@
 
 ### 2.1 CBM Census Schema (`assets/schemas/cbm_census.schema.json`)
 
-*(Schema file `assets/schemas/cbm_census.schema.json` not yet present.)*
+- **Schema URI:** `https://json-schema.org/draft/2020-12/schema`
+- **Title:** CBM Coverage and Chromosome Census Schema
+- **Description:** Formal JSON Schema (Draft 2020-12) for coverage_and_chromosome_census.json produced by BAITGERMLINEJUNCTIONS (baitgerm/census.py:deconvolve_and_census).
+- **Producer:** `BAITGERMLINEJUNCTIONS` (`cbm_bait_germline_junctions.py` -> `coverage_and_chromosome_census.json`)
+- **Required Top-Level Keys:** `median_c_soma`, `median_c_germ`, `germline_fraction`, `n_breaks`, `n_germ_telo`, `estimated_germline_chromosomes`, `n_shared_telo`, `n_satellite_excluded`
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `estimated_germline_chromosomes` | `number` | n_germ_telo / 2 |
+| `germline_fraction` | `number` | Estimated germline-to-total ratio |
+| `median_c_germ` | `number` | Median germline coverage across candidate break sites |
+| `median_c_soma` | `number` | Median somatic coverage across candidate break sites |
+| `n_breaks` | `integer` | Number of PDE break sites identified |
+| `n_germ_telo` | `integer` | Number of germline native telomeres |
+| `n_satellite_excluded` | `integer` | Number of loci classified as tandem satellite arrays |
+| `n_shared_telo` | `integer` | Number of shared native telomeres |
 
 ### 2.2 Inter-Module TSV Contracts (`assets/schemas/inter_module_tsv_contracts.json`)
 
-*(Contracts file `assets/schemas/inter_module_tsv_contracts.json` not yet present.)*
+| Contract TSV | Producer Module | Consumer Module(s) | Ordered Columns | Status Enums / Details |
+| :--- | :--- | :--- | :--- | :--- |
+| `bipartite_spacing_summary.tsv` | `BIPARTITEPROFILER` | `CBMDISCOVERY` | `sequence_name`, `core_start`, `core_stop`, `core_strand`, `core_offset_to_pos0`, `has_partner`, `partner_type`, `partner_domain`, `partner_start`, `partner_stop`, `partner_strand`, `partner_offset_to_pos0`, `spacer_bp`, `spacer_type`, `relative_strand` | — |
+| `core_grid_summary.tsv` | `MEMECOREGRID` | `CBMDISCOVERY` | `phase`, `condition_id`, `radius`, `markov_order`, `mod`, `revcomp`, `pal`, `w_label`, `width`, `nsites`, `evalue`, `consensus`, `total_ic`, `mean_ic`, `consensus_entropy`, `occupancy`, `median_offset_to_pos0`, `positional_iqr`, `telomeric_echo_fraction`, `rejection_flag`, `composite_score` | — |
+| `junction_catalog.tsv` | `BAITGERMLINEJUNCTIONS` | `CBMDISCOVERY` | `anchor_id`, `classification`, `c_telo`, `c_germ`, `coherence`, `microhomology_len`, `microhomology_motif`, `soma_flank_len`, `germ_flank_len`, `collapsed_copies` | `PDE_BREAK_SITE`, `GERMLINE_NATIVE_TELOMERE`, `SHARED_NATIVE_TELOMERE`, `TANDEM_SATELLITE_ARRAY`, `UNBROKEN_GERMLINE_LOCUS`, `LOW_COHERENCE_JUNCTION`, `CANDIDATE_TELOMERE` |
 
 ## 3. Python Module AST Symbol Table
 
