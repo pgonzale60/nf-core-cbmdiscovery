@@ -11,7 +11,11 @@ Validates:
        against `core_grid_summary.tsv` columns.
      - `modules/local/bipartiteprofiler/resources/usr/lib/bipartite/spacing.py` (lines 200-225)
        against `bipartite_spacing_summary.tsv` columns.
-  3. If `scripts/extract_code_contracts.py` exists, executes `python3 scripts/extract_code_contracts.py --check`
+  3. Validates module stub contracts to guarantee schema-compliant stub executions:
+     - `modules/local/baitgermlinejunctions/main.nf` against `junction_catalog.tsv` and `cbm_census.schema.json`.
+     - `modules/local/memecoregrid/main.nf` against `core_grid_summary.tsv`.
+     - `modules/local/bipartiteprofiler/main.nf` against `bipartite_spacing_summary.tsv`.
+  4. If `scripts/extract_code_contracts.py` exists, executes `python3 scripts/extract_code_contracts.py --check`
      and asserts exit code 0.
 """
 
@@ -197,6 +201,80 @@ def verify_live_code_contracts(tsv_contracts: dict) -> None:
     print("✓ BIPARTITEPROFILER (bipartite_spacing_summary.tsv) columns match live code (lines 200-225).")
 
 
+def verify_module_stub_contracts(tsv_contracts: dict, census_schema: dict) -> None:
+    """Verify stub blocks in modules emit schema-compliant headers and JSON keys."""
+    contracts = tsv_contracts["contracts"]
+    required_census_keys = census_schema.get("required", [])
+
+    # 1. BAITGERMLINEJUNCTIONS (junction_catalog.tsv and coverage_and_chromosome_census.json)
+    bg_main = REPO_ROOT / "modules" / "local" / "baitgermlinejunctions" / "main.nf"
+    assert bg_main.is_file(), f"Module file does not exist: {bg_main}"
+    bg_content = bg_main.read_text(encoding="utf-8")
+    stub_bg = bg_content.split("stub:")[-1]
+
+    jc_match = re.search(
+        r'echo\s+(?:-[a-zA-Z]+\s+)?["\'](.*?)["\']\s*>\s*["\']?\$\{prefix\}\.junction_catalog\.tsv["\']?',
+        stub_bg,
+    )
+    assert jc_match, f"Could not find stub echo for junction_catalog.tsv in {bg_main}"
+    raw_jc = jc_match.group(1)
+    jc_stub_cols = [c.strip() for c in re.split(r"\\+t|\t", raw_jc) if c.strip()]
+    expected_jc = contracts["junction_catalog.tsv"]["columns"]
+    assert jc_stub_cols == expected_jc, (
+        f"Stub columns mismatch in {bg_main}: {jc_stub_cols} != {expected_jc}"
+    )
+
+    census_match = re.search(
+        r'echo\s+[\'"](\{.*?\})[\'"]\s*>\s*["\']?\$\{prefix\}\.coverage_and_chromosome_census\.json["\']?',
+        stub_bg,
+    )
+    assert census_match, f"Could not find stub echo for coverage_and_chromosome_census.json in {bg_main}"
+    census_data = json.loads(census_match.group(1))
+    actual_census_keys = list(census_data.keys())
+    assert set(actual_census_keys) == set(required_census_keys), (
+        f"Stub census keys mismatch in {bg_main}: {actual_census_keys} != {required_census_keys}"
+    )
+    print("✓ BAITGERMLINEJUNCTIONS stub contracts match schemas.")
+
+    # 2. MEMECOREGRID (core_grid_summary.tsv)
+    cg_main = REPO_ROOT / "modules" / "local" / "memecoregrid" / "main.nf"
+    assert cg_main.is_file(), f"Module file does not exist: {cg_main}"
+    cg_content = cg_main.read_text(encoding="utf-8")
+    stub_cg = cg_content.split("stub:")[-1]
+
+    cg_match = re.search(
+        r'echo\s+(?:-[a-zA-Z]+\s+)?["\'](.*?)["\']\s*>\s*["\']?\$\{prefix\}\.core_grid_summary\.tsv["\']?',
+        stub_cg,
+    )
+    assert cg_match, f"Could not find stub echo for core_grid_summary.tsv in {cg_main}"
+    raw_cg = cg_match.group(1)
+    cg_stub_cols = [c.strip() for c in re.split(r"\\+t|\t", raw_cg) if c.strip()]
+    expected_cg = contracts["core_grid_summary.tsv"]["columns"]
+    assert cg_stub_cols == expected_cg, (
+        f"Stub columns mismatch in {cg_main}: {cg_stub_cols} != {expected_cg}"
+    )
+    print("✓ MEMECOREGRID stub contracts match schemas.")
+
+    # 3. BIPARTITEPROFILER (bipartite_spacing_summary.tsv)
+    bp_main = REPO_ROOT / "modules" / "local" / "bipartiteprofiler" / "main.nf"
+    assert bp_main.is_file(), f"Module file does not exist: {bp_main}"
+    bp_content = bp_main.read_text(encoding="utf-8")
+    stub_bp = bp_content.split("stub:")[-1]
+
+    bp_match = re.search(
+        r'echo\s+(?:-[a-zA-Z]+\s+)?["\'](.*?)["\']\s*>\s*["\']?\$\{prefix\}\.bipartite_spacing_summary\.tsv["\']?',
+        stub_bp,
+    )
+    assert bp_match, f"Could not find stub echo for bipartite_spacing_summary.tsv in {bp_main}"
+    raw_bp = bp_match.group(1)
+    bp_stub_cols = [c.strip() for c in re.split(r"\\+t|\t", raw_bp) if c.strip()]
+    expected_bp = contracts["bipartite_spacing_summary.tsv"]["columns"]
+    assert bp_stub_cols == expected_bp, (
+        f"Stub columns mismatch in {bp_main}: {bp_stub_cols} != {expected_bp}"
+    )
+    print("✓ BIPARTITEPROFILER stub contracts match schemas.")
+
+
 def verify_code_contracts_extractor() -> None:
     """Run extract_code_contracts.py --check if present."""
     extractor_script = REPO_ROOT / "scripts" / "extract_code_contracts.py"
@@ -217,8 +295,9 @@ def verify_code_contracts_extractor() -> None:
 
 
 def main() -> int:
-    tsv_contracts, _ = verify_schemas_structure()
+    tsv_contracts, census_schema = verify_schemas_structure()
     verify_live_code_contracts(tsv_contracts)
+    verify_module_stub_contracts(tsv_contracts, census_schema)
     verify_code_contracts_extractor()
     print("check_data_contracts: PASS (all TSV/JSON schemas and live code contracts verified)")
     return 0

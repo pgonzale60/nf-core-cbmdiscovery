@@ -43,7 +43,7 @@ process MEMECOREGRID {
     """
     touch "${prefix}.best_core_motif.meme"
     touch "${prefix}.best_background.bfile"
-    echo "phase\tcondition_id\tradius\tmarkov_order\tmod\trevcomp\tw_label\twidth\tnsites\tevalue\tconsensus\ttotal_ic\tmean_ic\tconsensus_entropy\toccupancy\tmedian_offset_to_pos0\tpositional_iqr\tcomposite_score" > "${prefix}.core_grid_summary.tsv"
+    echo -e "phase\\tcondition_id\\tradius\\tmarkov_order\\tmod\\trevcomp\\tpal\\tw_label\\twidth\\tnsites\\tevalue\\tconsensus\\ttotal_ic\\tmean_ic\\tconsensus_entropy\\toccupancy\\tmedian_offset_to_pos0\\tpositional_iqr\\ttelomeric_echo_fraction\\trejection_flag\\tcomposite_score" > "${prefix}.core_grid_summary.tsv"
     echo '{"consensus": "A", "composite_score": 0.0}' > "${prefix}.core_motif_metrics.json"
     """
 }
