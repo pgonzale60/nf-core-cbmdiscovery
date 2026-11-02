@@ -46,7 +46,7 @@ process BIPARTITEPROFILER {
     def prefix = task.ext.prefix ?: "${meta.id}"
     """
     touch "${prefix}.best_auxiliary_motif.meme"
-    touch "${prefix}.bipartite_spacing_summary.tsv"
+    echo -e "sequence_name\\tcore_start\\tcore_stop\\tcore_strand\\tcore_offset_to_pos0\\thas_partner\\tpartner_type\\tpartner_domain\\tpartner_start\\tpartner_stop\\tpartner_strand\\tpartner_offset_to_pos0\\tspacer_bp\\tspacer_type\\trelative_strand" > "${prefix}.bipartite_spacing_summary.tsv"
     echo "# CBM Discovery Report: ${prefix}" > "${prefix}.cbm_discovery_report.md"
     touch "${prefix}.core_masked.fasta"
     """

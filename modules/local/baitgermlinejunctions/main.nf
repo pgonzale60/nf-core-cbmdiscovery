@@ -57,40 +57,53 @@ with open('${candidate_anchors}') as f_in, open('anchors_terminal_60bp.fasta', '
 "
 
     # 2. Mate-synchronized read baiting using bbduk.sh
-    if [ "${is_single}" = "true" ]; then
-        bbduk.sh \\
-            in=${r1} \\
-            ref=anchors_terminal_60bp.fasta \\
-            outm=baited_R1.fastq \\
-            k=27 \\
-            hdist=1 \\
-            rcomp=t \\
-            minkmerhits=1 \\
-            entropy=0.35 \\
-            entropywindow=50 \\
-            threads=${task.cpus} \\
-            overwrite=true
-
-        gzip -c baited_R1.fastq > ${prefix}.pass2_baited_reads.fastq.gz
-        READS_ARGS="--reads-1 baited_R1.fastq"
+    if [ ! -s anchors_terminal_60bp.fasta ] || ! grep -q "^>" anchors_terminal_60bp.fasta; then
+        echo "[BAITGERMLINEJUNCTIONS] No candidate anchors to bait. Creating empty baited reads."
+        touch baited_R1.fastq
+        if [ "${is_single}" = "true" ]; then
+            gzip -c baited_R1.fastq > ${prefix}.pass2_baited_reads.fastq.gz
+            READS_ARGS="--reads-1 baited_R1.fastq"
+        else
+            touch baited_R2.fastq
+            cat baited_R1.fastq baited_R2.fastq | gzip -c > ${prefix}.pass2_baited_reads.fastq.gz
+            READS_ARGS="--reads-1 baited_R1.fastq --reads-2 baited_R2.fastq"
+        fi
     else
-        bbduk.sh \\
-            in1=${r1} \\
-            in2=${r2} \\
-            ref=anchors_terminal_60bp.fasta \\
-            outm1=baited_R1.fastq \\
-            outm2=baited_R2.fastq \\
-            k=27 \\
-            hdist=1 \\
-            rcomp=t \\
-            minkmerhits=1 \\
-            entropy=0.35 \\
-            entropywindow=50 \\
-            threads=${task.cpus} \\
-            overwrite=true
+        if [ "${is_single}" = "true" ]; then
+            bbduk.sh \\
+                in=${r1} \\
+                ref=anchors_terminal_60bp.fasta \\
+                outm=baited_R1.fastq \\
+                k=27 \\
+                hdist=1 \\
+                rcomp=t \\
+                minkmerhits=1 \\
+                entropy=0.35 \\
+                entropywindow=50 \\
+                threads=${task.cpus} \\
+                overwrite=true
 
-        cat baited_R1.fastq baited_R2.fastq | gzip -c > ${prefix}.pass2_baited_reads.fastq.gz
-        READS_ARGS="--reads-1 baited_R1.fastq --reads-2 baited_R2.fastq"
+            gzip -c baited_R1.fastq > ${prefix}.pass2_baited_reads.fastq.gz
+            READS_ARGS="--reads-1 baited_R1.fastq"
+        else
+            bbduk.sh \\
+                in1=${r1} \\
+                in2=${r2} \\
+                ref=anchors_terminal_60bp.fasta \\
+                outm1=baited_R1.fastq \\
+                outm2=baited_R2.fastq \\
+                k=27 \\
+                hdist=1 \\
+                rcomp=t \\
+                minkmerhits=1 \\
+                entropy=0.35 \\
+                entropywindow=50 \\
+                threads=${task.cpus} \\
+                overwrite=true
+
+            cat baited_R1.fastq baited_R2.fastq | gzip -c > ${prefix}.pass2_baited_reads.fastq.gz
+            READS_ARGS="--reads-1 baited_R1.fastq --reads-2 baited_R2.fastq"
+        fi
     fi
 
     # 3. Exact bifurcation partitioning, microhomology annotation, and junction census
@@ -113,8 +126,8 @@ with open('${candidate_anchors}') as f_in, open('anchors_terminal_60bp.fasta', '
     def prefix = task.ext.prefix ?: "${meta.id}"
     """
     touch "${prefix}.break_windows_300bp.fasta"
-    touch "${prefix}.junction_catalog.tsv"
+    echo -e "anchor_id\\tclassification\\tc_telo\\tc_germ\\tcoherence\\tmicrohomology_len\\tmicrohomology_motif\\tsoma_flank_len\\tgerm_flank_len\\tcollapsed_copies" > "${prefix}.junction_catalog.tsv"
     touch "${prefix}.pass2_baited_reads.fastq.gz"
-    echo '{"n_breaks": 0, "n_germ_telo": 0}' > "${prefix}.coverage_and_chromosome_census.json"
+    echo '{"median_c_soma": 0.0, "median_c_germ": 0.0, "germline_fraction": 0.0, "n_breaks": 0, "n_germ_telo": 0, "estimated_germline_chromosomes": 0.0, "n_shared_telo": 0, "n_satellite_excluded": 0}' > "${prefix}.coverage_and_chromosome_census.json"
     """
 }
