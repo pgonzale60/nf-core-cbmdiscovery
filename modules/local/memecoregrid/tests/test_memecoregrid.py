@@ -101,6 +101,7 @@ seq4  +  27  0.0001
         self.assertGreater(metrics["composite_score"], 0.5)
 
     def test_core_30bp_beats_short_6bp_motif(self):
+        """Verify high-information monomer is not defeated by repetitive concatemer."""
         import tempfile
 
         # Condition 1: 6 bp, mean_ic ~ 1.85, evalue 1e-6
@@ -119,7 +120,7 @@ sites sorted by position p-value
 s1 + 25 1e-5
 s2 + 25 1e-5
 """
-        # Condition 2: 30 bp, mean_ic ~ 1.55, evalue 1e-40
+        # Condition 2: 30 bp, mean_ic ~ 1.55, evalue 1e-40 (repetitive AC concatemer)
         row_30 = "\n".join(["  0.8 0.1 0.1 0.0" if i % 2 == 0 else "  0.0 0.8 0.1 0.1" for i in range(30)])
         m30 = f"""MEME version 4
 MOTIF LONGCORE 1 width = 30 sites = 20 llr = 200 E-value = 1e-040
@@ -142,8 +143,53 @@ s2 + 25 1e-5
 
         self.assertIsNotNone(met6)
         self.assertIsNotNone(met30)
-        # Condition 2 (30 bp) must beat Condition 1 (6 bp)
-        self.assertGreater(met30["composite_score"], met6["composite_score"])
+        # Condition 1 (high-IC 6 bp monomer) must beat Condition 2 (30 bp repetitive concatemer)
+        self.assertGreater(met6["composite_score"], met30["composite_score"])
+
+    def test_anr_site_multiplicity_credit(self):
+        """Verify ANR site multiplicity credits site density and boosts composite score."""
+        import tempfile
+
+        def make_meme(nsites: int, n_seqs: int) -> str:
+            rows = "\n".join(["  0.8 0.05 0.1 0.05"] * 8)
+            sites_lines = "\n".join([f"s{i % n_seqs} + 25 1e-5" for i in range(nsites)])
+            return f"""MEME version 4
+MOTIF TEST 1 width = 8 sites = {nsites} llr = 100 E-value = 1e-10
+letter-probability matrix: alength= 4 w= 8 nsites= {nsites} E= 1e-10
+{rows}
+Multilevel AAAAAAAA
+sites sorted by position p-value
+{sites_lines}
+"""
+
+        # 55 sites across 31 sequences (ANR multi-site recurrence)
+        m_anr = make_meme(55, 31)
+        # 31 single sites across 31 sequences (ZOOPS single-site)
+        m_zoops = make_meme(31, 31)
+
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f_anr, tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f_zoops:
+            f_anr.write(m_anr)
+            f_anr.flush()
+            f_zoops.write(m_zoops)
+            f_zoops.flush()
+
+            res_anr = parse_meme_txt(f_anr.name, radius=30, total_sequences=31)
+            res_zoops = parse_meme_txt(f_zoops.name, radius=30, total_sequences=31)
+
+            self.assertIsNotNone(res_anr)
+            self.assertIsNotNone(res_zoops)
+            self.assertAlmostEqual(res_zoops["site_density_factor"], 1.0, places=2)
+            self.assertGreater(res_anr["site_density_factor"], 1.5)
+            self.assertGreater(res_anr["composite_score"], res_zoops["composite_score"])
+
+    def test_phase2_joint_model_width_exploration(self):
+        """Verify Phase 2 grid evaluates both zoops and anr across all width ranges."""
+        import inspect
+        from memegrid import grid_runner
+
+        src = inspect.getsource(grid_runner.run_meme_grid)
+        self.assertIn('for mod in ["zoops", "anr"]:', src)
+        self.assertIn("P2_R{best_radius}_m{best_order}_{mod}_{st_lbl}_{w['label']}", src)
 
     def test_insignificant_evalue_filtered_out(self):
         import tempfile

@@ -172,6 +172,10 @@ def parse_meme_txt(
     unique_seqs = len({s["seq"] for s in site_records})
     occupancy = unique_seqs / total_sequences if total_sequences > 0 else 0.0
 
+    # Credit site multiplicity for ANR mode
+    site_density = (nsites / unique_seqs) if unique_seqs > 0 else 1.0
+    site_density_factor = 1.0 + math.log(max(1.0, site_density))
+
     # 5. Positional IQR
     dists = sorted(s["dist_to_pos0"] for s in site_records)
     if len(dists) >= 4:
@@ -194,7 +198,7 @@ def parse_meme_txt(
         else (cons_entropy / 1.2 if cons_entropy >= 0.6 else 0.05)
     )
 
-    # Score rewards mean IC, occupancy, and tight positional clustering normalized by search radius
+    # Score rewards mean IC, normalized width, ANR site density, occupancy, and tight positional clustering
     norm_iqr = pos_iqr / max(10, radius)
     iqr_penalty = 1.0 / (1.0 + math.log1p(norm_iqr * 5.0))
     is_telo_echo, telo_echo_frac = is_telomeric_repeat_echo(
@@ -207,8 +211,13 @@ def parse_meme_txt(
         composite_score = 0.0
         rejection_flag = "REJECTED_INSIGNIFICANT_EVALUE"
     else:
+        width_factor = math.pow(w, 0.2)
         composite_score = (
-            (mean_ic * math.sqrt(w)) * occupancy * iqr_penalty * homopolymer_factor
+            (mean_ic * width_factor)
+            * site_density_factor
+            * occupancy
+            * iqr_penalty
+            * homopolymer_factor
         )
         rejection_flag = "PASS"
 
@@ -223,6 +232,7 @@ def parse_meme_txt(
         "consensus_entropy": cons_entropy,
         "unique_occupied_sites": unique_seqs,
         "occupancy": round(occupancy, 4),
+        "site_density_factor": round(site_density_factor, 4),
         "median_offset_to_pos0": round(median_offset, 2),
         "positional_iqr": round(pos_iqr, 2),
         "telomeric_echo_fraction": telo_echo_frac,
