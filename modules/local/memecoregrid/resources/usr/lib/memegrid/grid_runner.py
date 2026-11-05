@@ -248,17 +248,18 @@ def run_meme_grid(
     best_radius = p1_best["radius"]
     best_order = p1_best["markov_order"]
 
-    # Phase 2: Width Bracket & Strand Refinement
+    # Phase 2: Width Bracket & Model Refinement
     phase2_conds = []
-    for w in WIDTH_RANGES:
-        for revcomp in [True, False]:
-            st_lbl = "revcomp" if revcomp else "fwd"
-            phase2_conds.append({
-                "id": f"P2_R{best_radius}_m{best_order}_zoops_{st_lbl}_{w['label']}",
-                "phase": 2, "radius": best_radius, "markov_order": best_order,
-                "bfile": bg_files[best_order], "mod": "zoops", "revcomp": revcomp,
-                "w_args": w["args"], "w_label": w["label"],
-            })
+    for mod in ["zoops", "anr"]:
+        for w in WIDTH_RANGES:
+            for revcomp in [True, False]:
+                st_lbl = "revcomp" if revcomp else "fwd"
+                phase2_conds.append({
+                    "id": f"P2_R{best_radius}_m{best_order}_{mod}_{st_lbl}_{w['label']}",
+                    "phase": 2, "radius": best_radius, "markov_order": best_order,
+                    "bfile": bg_files[best_order], "mod": mod, "revcomp": revcomp,
+                    "w_args": w["args"], "w_label": w["label"],
+                })
     p2_results = execute_batch(phase2_conds)
     all_results.extend(p2_results)
 
@@ -271,6 +272,7 @@ def run_meme_grid(
     )
     best_w_label = p2_best["w_label"]
     best_revcomp = p2_best["revcomp"]
+    best_mod = p2_best.get("mod", "zoops")
 
     # Phase 3: Site Distribution Model & Palindrome Check
     phase3_conds = []
@@ -283,9 +285,9 @@ def run_meme_grid(
             "pal": False, "w_args": best_w_args, "w_label": best_w_label,
         })
     phase3_conds.append({
-        "id": f"P3_R{best_radius}_m{best_order}_zoops_{st_lbl}_pal_{best_w_label}",
+        "id": f"P3_R{best_radius}_m{best_order}_{best_mod}_{st_lbl}_pal_{best_w_label}",
         "phase": 3, "radius": best_radius, "markov_order": best_order,
-        "bfile": bg_files[best_order], "mod": "zoops", "revcomp": best_revcomp,
+        "bfile": bg_files[best_order], "mod": best_mod, "revcomp": best_revcomp,
         "pal": True, "w_args": best_w_args, "w_label": best_w_label,
     })
     p3_results = execute_batch(phase3_conds)

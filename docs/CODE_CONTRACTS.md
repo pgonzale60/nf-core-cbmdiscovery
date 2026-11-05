@@ -286,7 +286,7 @@
 | `calculate_consensus_entropy` | `function` | `L13-L25` | `def calculate_consensus_entropy(consensus: str) -> float` | Calculate Shannon entropy (in bits) across the characters of a consensus sequence. |
 | `_revcomp` | `function` | `L28-L30` | `def _revcomp(seq: str) -> str` | — |
 | `is_telomeric_repeat_echo` | `function` | `L33-L80` | `def is_telomeric_repeat_echo(consensus: str, repeat: str=SSOT['telomere_repeat']) -> tuple[bool, float]` | Check if motif consensus is a telomeric repeat echo (>=50% exact 6-mers or >=70% in-phase 1-mismatch coverage). |
-| `parse_meme_txt` | `function` | `L83-L231` | `def parse_meme_txt(txt_path: str \| Path, radius: int, total_sequences: int=1, telomere_repeat: str=SSOT['telomere_repeat']) -> dict[str, Any] \| None` | Parse MEME text output and compute comprehensive motif metrics. |
+| `parse_meme_txt` | `function` | `L83-L241` | `def parse_meme_txt(txt_path: str \| Path, radius: int, total_sequences: int=1, telomere_repeat: str=SSOT['telomere_repeat']) -> dict[str, Any] \| None` | Parse MEME text output and compute comprehensive motif metrics. |
 
 ### `modules/local/memecoregrid/resources/usr/lib/memegrid/grid_runner.py`
 
@@ -295,8 +295,8 @@
 | `generate_grid_conditions` | `function` | `L21-L37` | `def generate_grid_conditions(radii: list[int] \| None=None) -> list[dict[str, Any]]` | Generate parameter combinations across radius, model, strand, and width ranges. |
 | `build_distal_flank_markov_backgrounds` | `function` | `L40-L92` | `def build_distal_flank_markov_backgrounds(break_windows_fasta: str \| Path, output_dir: Path) -> tuple[list[int], dict[int, str]]` | Build candidate Markov backgrounds (m=0,1,2,3) from distal flanking arms outside [-excl_r..+excl_r]. |
 | `_run_single_condition` | `function` | `L95-L157` | `def _run_single_condition(meme_bin: str, cond: dict[str, Any], r_fa_str: str, cond_dir_str: str, total_seqs: int) -> dict[str, Any] \| None` | Run MEME for a single condition and parse metrics. |
-| `run_meme_grid` | `function` | `L160-L307` | `def run_meme_grid(break_windows_fasta: str \| Path, output_dir: str \| Path, radii: list[int] \| None=None, threads: int=1) -> tuple[dict[str, Any] \| None, list[dict[str, Any]]]` | Execute 3-phase hierarchical MEME parameter grid search. |
-| `export_grid_outputs` | `function` | `L310-L361` | `def export_grid_outputs(best_motif: dict[str, Any] \| None, grid_results: list[dict[str, Any]], output_meme: str \| Path, summary_tsv: str \| Path, metrics_json: str \| Path, output_background: str \| Path \| None=None)` | Save best_core_motif.meme, core_grid_summary.tsv, core_motif_metrics.json, and best_background.bfile. |
+| `run_meme_grid` | `function` | `L160-L309` | `def run_meme_grid(break_windows_fasta: str \| Path, output_dir: str \| Path, radii: list[int] \| None=None, threads: int=1) -> tuple[dict[str, Any] \| None, list[dict[str, Any]]]` | Execute 3-phase hierarchical MEME parameter grid search. |
+| `export_grid_outputs` | `function` | `L312-L363` | `def export_grid_outputs(best_motif: dict[str, Any] \| None, grid_results: list[dict[str, Any]], output_meme: str \| Path, summary_tsv: str \| Path, metrics_json: str \| Path, output_background: str \| Path \| None=None)` | Save best_core_motif.meme, core_grid_summary.tsv, core_motif_metrics.json, and best_background.bfile. |
 
 ### `modules/local/memecoregrid/resources/usr/lib/memegrid/slicer.py`
 
