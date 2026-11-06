@@ -26,7 +26,7 @@ process BIPARTITEPROFILER {
     def prefix = task.ext.prefix ?: "${meta.id}"
 
     """
-    # Tool: cbm_bipartite_profiler.py | Script-SHA: 2bb0a4374da7f5c9
+    # Tool: cbm_bipartite_profiler.py | Script-SHA: 0971dabdad966018
     cbm_bipartite_profiler.py \\
         --break-windows "${break_windows_fasta}" \\
         --core-meme "${best_core_motif}" \\

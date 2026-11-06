@@ -6,11 +6,9 @@ from collections import defaultdict
 import json
 import os
 from pathlib import Path
-import re
 import shutil
 import subprocess
 import sys
-from typing import Any
 
 # Ensure usr/lib is in python search path
 _LIB_DIR = Path(__file__).resolve().parent.parent / "lib"
@@ -18,19 +16,21 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 from bipartite.aux_grid import (  # noqa: E402
-    is_telomeric_repeat_echo,
-    parse_aux_meme_results,
-    run_auxiliary_grid,
-    score_auxiliary_candidate,
+    is_core_echo,
+    run_localized_auxiliary_meme,
 )
+
+__all__ = ["build_higher_order_markov_bg", "is_core_echo", "main", "parse_args"]
 from bipartite.masker import (  # noqa: E402
     load_fasta_dict,
     load_soma_len_map,
     mask_core_motifs,
     run_fimo,
+    write_sliced_fasta,
 )
 from bipartite.reporter import generate_cbm_discovery_report  # noqa: E402
 from bipartite.spacing import (  # noqa: E402
+    detect_homotypic_bipartite,
     profile_bipartite_spacing,
     write_spacing_tsv,
 )
@@ -90,71 +90,15 @@ def build_higher_order_markov_bg(fasta_file: str | Path, out_bg: Path) -> Path:
     return out_bg
 
 
-def revcomp(seq: str) -> str:
-    tr = str.maketrans("ACGTNacgtn", "TGCANtgcan")
-    return seq.translate(tr)[::-1]
-
-
-def is_core_echo(aux_consensus: str, core_consensus: str) -> bool:
-    """Return True if aux_consensus is a substring/superstring of core_consensus or its revcomp."""
-    if not aux_consensus or not core_consensus:
-        return False
-    a = aux_consensus.upper()
-    c = core_consensus.upper()
-    rc_c = revcomp(c)
-    return (a in c) or (c in a) or (a in rc_c) or (rc_c in a)
-
-
-def extract_motif_n_from_meme(
-    meme_txt_path: Path, motif_num: int, output_aux_meme: Path
-) -> dict[str, Any] | None:
-    """Extract secondary or tertiary motif from multi-motif MEME text output."""
-    if not meme_txt_path.exists():
-        return None
-    text = meme_txt_path.read_text(encoding="utf-8")
-    m_split = re.split(rf"\n(?=MOTIF\s+{motif_num}\b|\bMEME-{motif_num}\b)", text)
-    if len(m_split) < 2:
-        return None
-
-    header = text.split("MOTIF")[0].strip() + "\n\n"
-    next_num = motif_num + 1
-    motif_content = re.split(
-        rf"\n(?=MOTIF\s+{next_num}\b|\bMEME-{next_num}\b)", m_split[1]
-    )[0]
-    output_aux_meme.write_text(header + motif_content, encoding="utf-8")
-
-    parsed = parse_aux_meme_results(output_aux_meme)
-    if parsed:
-        parsed["id"] = f"MEME_soft_erasure_motif_{motif_num}"
-        parsed["meme_txt_path"] = str(output_aux_meme)
-        return parsed
-
-    m_e = re.search(r"E=\s*(\S+)", motif_content)
-    m_w = re.search(r"w=\s*(\d+)", motif_content)
-    m_ns = re.search(r"nsites=\s*(\d+)", motif_content)
-    cons_m = re.search(r"Multilevel\s+([A-Za-z]+)", motif_content)
-    w = int(m_w.group(1)) if m_w else 8
-    return {
-        "id": f"MEME_soft_erasure_motif_{motif_num}",
-        "consensus": cons_m.group(1).upper() if cons_m else "",
-        "width": w,
-        "nsites": int(m_ns.group(1)) if m_ns else 0,
-        "evalue": float(m_e.group(1)) if m_e else 1.0,
-        "total_ic": w * 1.5,
-        "mean_ic": 1.5,
-        "consensus_entropy": 1.0,
-        "meme_txt_path": str(output_aux_meme),
-    }
-
-
 def main():
     args = parse_args()
-    # Check all required binaries fail loudly
-    for b in ["meme", "fasta-get-markov", "fimo", "spamo"]:
+    # Check required binaries fail loudly
+    for b in ["meme", "fimo"]:
         if not shutil.which(b):
             raise RuntimeError(f"Required binary '{b}' not found in PATH")
 
     raw_seqs = load_fasta_dict(args.break_windows)
+    soma_lens = load_soma_len_map(args.break_windows)
     seq_names = list(raw_seqs.keys())
 
     work_dir = Path("bipartite_work")
@@ -171,6 +115,7 @@ def main():
             core_hits_by_seq={},
             aux_hits_by_seq=None,
             pos0_coord={},
+            architecture="SIMPLE",
         )
         write_spacing_tsv(spacing_rows, args.output_spacing_tsv)
         generate_cbm_discovery_report(
@@ -187,75 +132,49 @@ def main():
         )
         return
 
-    # 1. Higher-order Markov background
-    if args.background_bfile and os.path.exists(args.background_bfile):
-        bg_file = Path(args.background_bfile)
-    else:
-        bg_file = build_higher_order_markov_bg(
-            args.break_windows, work_dir / "bg_bipartite.txt"
-        )
+    # 1. Parse core metrics JSON to retrieve winning radius and parameters
+    core_metrics = {}
+    if args.core_metrics_json and os.path.exists(args.core_metrics_json):
+        try:
+            with open(args.core_metrics_json, encoding="utf-8") as f_cm:
+                core_metrics = json.load(f_cm)
+        except Exception:
+            pass
 
-    # 2. Native Multi-Motif Soft-Erasure Discovery (MEME -nmotifs 3)
-    meme_out_dir = work_dir / "meme_soft_erasure_out"
+    best_radius = (
+        core_metrics.get("best_radius")
+        or core_metrics.get("radius")
+        or 50
+    )
     try:
-        subprocess.run(
-            [
-                "meme",
-                args.break_windows,
-                "-dna",
-                "-mod",
-                "zoops",
-                "-nmotifs",
-                "3",
-                "-minw",
-                "6",
-                "-maxw",
-                "25",
-                "-revcomp",
-                "-bfile",
-                str(bg_file),
-                "-oc",
-                str(meme_out_dir),
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=True,
-            check=True,
-        )
-    except subprocess.CalledProcessError as e:
-        err_msg = e.stderr.strip() if e.stderr else "Unknown error"
-        raise RuntimeError(
-            f"Soft-erasure MEME discovery failed with exit code {e.returncode}: {err_msg}"
-        ) from e
+        best_radius = int(best_radius)
+    except (ValueError, TypeError):
+        best_radius = 50
 
-    # 3. Spatial Spacing Validation via SpaMo
-    meme_xml = meme_out_dir / "meme.xml"
-    spamo_out_tsv = work_dir / "spamo.tsv"
-    if meme_xml.exists():
-        with open(spamo_out_tsv, "w", encoding="utf-8") as f_spamo:
-            subprocess.run(
-                [
-                    "spamo",
-                    "-text",
-                    "-margin",
-                    "100",
-                    "-range",
-                    "100",
-                    args.break_windows,
-                    str(meme_xml),
-                    str(meme_xml),
-                ],
-                stdout=f_spamo,
-                stderr=subprocess.DEVNULL,
-                check=False,
-            )
+    best_mod = (
+        core_metrics.get("best_model")
+        or core_metrics.get("mod")
+        or "zoops"
+    )
+    if best_mod not in ("zoops", "anr", "oops"):
+        best_mod = "zoops"
+    core_consensus = core_metrics.get("consensus", "")
 
-    # 4. Mask core motifs with N and run masked grid as complementary auxiliary search
+    # 2. Slice input FASTA to optimal spatial radius R*
+    sliced_fa = work_dir / f"windows_radius_{best_radius}bp.fasta"
+    sliced_seqs, sliced_soma_lens = write_sliced_fasta(
+        raw_seqs=raw_seqs,
+        soma_lens=soma_lens,
+        radius=best_radius,
+        output_fasta=sliced_fa,
+    )
+
+    # 3. Core motif instance mapping via FIMO and core-masking
     _masked_seqs, core_hits = mask_core_motifs(
         core_meme=args.core_meme,
-        fasta_file=args.break_windows,
+        fasta_file=sliced_fa,
         output_masked_fasta=args.output_masked_fasta,
-        fimo_out_dir="fimo_core_hits",
+        fimo_out_dir=work_dir / "fimo_core_hits",
         threshold=SSOT["fimo_core_threshold"],
     )
 
@@ -263,81 +182,103 @@ def main():
     for h in core_hits:
         core_hits_by_seq[h["seq_name"]].append(h)
 
-    best_aux_grid, _grid_results = run_auxiliary_grid(
-        masked_fasta=args.output_masked_fasta,
-        out_dir="aux_grid_runs",
-        bfile=str(bg_file),
-        threads=args.threads,
+    # 4. Step 1: Homotypic Core Partner Scan
+    is_homotypic, homotypic_info = detect_homotypic_bipartite(
+        core_hits=core_hits,
+        seq_names=seq_names,
+        min_fraction=0.30,
+        max_spacer_iqr=25.0,
     )
-
-    core_consensus = ""
-    if args.core_metrics_json and os.path.exists(args.core_metrics_json):
-        try:
-            with open(args.core_metrics_json, encoding="utf-8") as f_cm:
-                core_consensus = json.load(f_cm).get("consensus", "")
-        except Exception:
-            pass
-
-    # Compare soft-erasure Motif 2 / Motif 3 vs masked-grid auxiliary motif
-    candidate_soft = None
-    for m_idx in (2, 3):
-        m_cand = extract_motif_n_from_meme(
-            meme_out_dir / "meme.txt", m_idx, work_dir / f"soft_motif{m_idx}.meme"
-        )
-        if (
-            m_cand
-            and not is_core_echo(m_cand["consensus"], core_consensus)
-            and not is_telomeric_repeat_echo(m_cand["consensus"])[0]
-        ):
-            candidate_soft = m_cand
-            break
 
     best_aux = None
-    soft_score = (
-        score_auxiliary_candidate(candidate_soft, len(seq_names))
-        if candidate_soft
-        else 0.0
-    )
-    grid_score = (
-        score_auxiliary_candidate(best_aux_grid, len(seq_names))
-        if best_aux_grid
-        else 0.0
-    )
+    if is_homotypic:
+        architecture = "HOMOTYPIC_BIPARTITE"
+        best_aux = {
+            "consensus": core_consensus,
+            "width": core_metrics.get("width", len(core_consensus)),
+            "evalue": core_metrics.get("evalue", 0.0),
+            "evalue_str": str(core_metrics.get("evalue_str", core_metrics.get("evalue", "N/A"))),
+            "mean_ic": core_metrics.get("mean_ic", 0.0),
+            "architecture": "HOMOTYPIC_BIPARTITE",
+            "partner_type": "Secondary_Core",
+            "median_spacer_bp": homotypic_info.get("median_spacer", 0.0),
+            "iqr_spacer_bp": homotypic_info.get("iqr_spacer", 0.0),
+        }
+        # In homotypic bipartite, partner motif is the core motif itself
+        shutil.copy(args.core_meme, args.output_aux_meme)
 
-    if candidate_soft and soft_score > 0 and soft_score >= grid_score:
-        best_aux = candidate_soft
-        best_aux["composite_score"] = soft_score
-        shutil.copy(candidate_soft["meme_txt_path"], args.output_aux_meme)
-    elif best_aux_grid and grid_score > 0 and best_aux_grid.get("meme_txt_path"):
-        best_aux = best_aux_grid
-        best_aux["composite_score"] = grid_score
-        shutil.copy(best_aux["meme_txt_path"], args.output_aux_meme)
-    else:
-        with open(args.output_aux_meme, "w", encoding="utf-8") as f:
-            f.write("MEME version 4\n\nALPHABET= ACGT\n")
-
-    # 5. Profile bipartite spacing
-    aux_hits_by_seq = defaultdict(list)
-    if best_aux and os.path.exists(args.output_aux_meme):
-        aux_fimo_hits = run_fimo(
-            meme_file=args.output_aux_meme,
-            fasta_file=args.break_windows,
-            out_dir="fimo_aux_hits",
-            threshold=SSOT["fimo_aux_threshold"],
+        spacing_rows, spacing_summary = profile_bipartite_spacing(
+            seq_names=seq_names,
+            core_hits_by_seq=core_hits_by_seq,
+            aux_hits_by_seq=None,
+            pos0_coord=sliced_soma_lens,
+            architecture=architecture,
         )
-        for h in aux_fimo_hits:
-            aux_hits_by_seq[h["seq_name"]].append(h)
+        spacing_summary["architecture"] = architecture
+    else:
+        # 5. Step 2: Localized Multi-Motif Re-run on sliced window
+        if args.background_bfile and os.path.exists(args.background_bfile):
+            bg_file = Path(args.background_bfile)
+        else:
+            bg_file = build_higher_order_markov_bg(
+                args.break_windows, work_dir / "bg_bipartite.txt"
+            )
 
-    soma_lens = load_soma_len_map(args.break_windows)
-    spacing_rows, spacing_summary = profile_bipartite_spacing(
-        seq_names=seq_names,
-        core_hits_by_seq=core_hits_by_seq,
-        aux_hits_by_seq=aux_hits_by_seq if best_aux else None,
-        pos0_coord=soma_lens,
-    )
+        meme_aux_dir = work_dir / "meme_aux_out"
+        best_candidate, _aux_candidates = run_localized_auxiliary_meme(
+            sliced_fasta=sliced_fa,
+            out_dir=meme_aux_dir,
+            bfile=str(bg_file) if bg_file else None,
+            nmotifs=3,
+            minw=6,
+            maxw=30,
+            mod=best_mod,
+            revcomp=True,
+            core_consensus=core_consensus,
+            total_sequences=len(seq_names),
+        )
+
+        if best_candidate and best_candidate.get("meme_txt_path") and os.path.exists(best_candidate["meme_txt_path"]):
+            architecture = "HETEROTYPIC_BIPARTITE"
+            best_aux = best_candidate
+            best_aux["architecture"] = architecture
+            shutil.copy(best_candidate["meme_txt_path"], args.output_aux_meme)
+
+            aux_fimo_hits = run_fimo(
+                meme_file=args.output_aux_meme,
+                fasta_file=sliced_fa,
+                out_dir=work_dir / "fimo_aux_hits",
+                threshold=SSOT["fimo_aux_threshold"],
+            )
+            aux_hits_by_seq = defaultdict(list)
+            for h in aux_fimo_hits:
+                aux_hits_by_seq[h["seq_name"]].append(h)
+
+            spacing_rows, spacing_summary = profile_bipartite_spacing(
+                seq_names=seq_names,
+                core_hits_by_seq=core_hits_by_seq,
+                aux_hits_by_seq=aux_hits_by_seq,
+                pos0_coord=sliced_soma_lens,
+                architecture=architecture,
+            )
+            spacing_summary["architecture"] = architecture
+        else:
+            architecture = "SIMPLE"
+            with open(args.output_aux_meme, "w", encoding="utf-8") as f:
+                f.write("MEME version 4\n\nALPHABET= ACGT\n")
+
+            spacing_rows, spacing_summary = profile_bipartite_spacing(
+                seq_names=seq_names,
+                core_hits_by_seq=core_hits_by_seq,
+                aux_hits_by_seq=None,
+                pos0_coord=sliced_soma_lens,
+                architecture=architecture,
+            )
+            spacing_summary["architecture"] = architecture
+
+    # 6. Write spacing TSV and Markdown report
     write_spacing_tsv(spacing_rows, args.output_spacing_tsv)
 
-    # 6. Generate CBM Discovery Markdown Report
     generate_cbm_discovery_report(
         sample_id=args.sample_id,
         census_json_path=args.census_json,
@@ -347,10 +288,15 @@ def main():
         output_report_md=args.output_report,
     )
 
+    partner_desc = (
+        f"Homotypic Core ({best_aux['consensus']})"
+        if architecture == "HOMOTYPIC_BIPARTITE"
+        else (f"Auxiliary ({best_aux['consensus']})" if best_aux else "None")
+    )
     print(
         f"[BIPARTITEPROFILER] Completed for {args.sample_id}. "
-        f"Auxiliary motif: {'Found (' + best_aux['consensus'] + ')' if best_aux else 'None'}. "
-        f"Paired loci: {spacing_summary['n_paired_occurrences']}."
+        f"Architecture: {architecture}. Partner motif: {partner_desc}. "
+        f"Paired loci: {spacing_summary.get('n_paired_occurrences', 0)}."
     )
 
 
