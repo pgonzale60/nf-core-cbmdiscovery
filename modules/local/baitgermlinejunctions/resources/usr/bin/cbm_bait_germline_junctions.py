@@ -26,6 +26,7 @@ from baitgerm.partitioner import partition_baited_read  # noqa: E402
 from baitgerm.reconstructor import (  # noqa: E402
     annotate_microhomology,
     build_300bp_break_window,
+    mask_residual_telomeric_tracts,
     reconstruct_germline_consensus,
 )
 from cbm_defaults import SSOT  # noqa: E402
@@ -300,13 +301,18 @@ def main():
                     if max_flank
                     else len(loc["anchor_seq"])
                 )
+                masked_win = mask_residual_telomeric_tracts(
+                    loc["break_window"],
+                    center_soma_len=soma_len,
+                    repeat=args.telomere_repeat,
+                )
                 hdr = (
                     f"{loc['anchor_id']} class=PDE_BREAK_SITE "
                     f"c_telo={loc['c_telo']} c_germ={loc['c_germ']} "
                     f"coherence={loc['coherence']} mh_len={loc['microhomology_len']} "
                     f"soma_len={soma_len} collapsed_copies={loc.get('collapsed_copies', 1)}"
                 )
-                f_fa.write(f">{hdr}\n{loc['break_window']}\n")
+                f_fa.write(f">{hdr}\n{masked_win}\n")
 
     # Write census JSON
     with open(args.output_census, "w", encoding="utf-8") as f_json:

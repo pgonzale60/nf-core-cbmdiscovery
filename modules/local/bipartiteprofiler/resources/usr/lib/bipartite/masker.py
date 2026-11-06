@@ -223,19 +223,78 @@ def mask_sequences_with_hits(
     return masked_seqs
 
 
+def _revcomp(seq: str) -> str:
+    tr = str.maketrans("ACGTNacgtn", "TGCANtgcan")
+    return seq.translate(tr)[::-1]
+
+
+def mask_residual_telomeric_tracts(
+    seq: str,
+    center_soma_len: int = SSOT["max_soma_flank_len"],
+    repeat: str = SSOT["telomere_repeat"],
+) -> str:
+    """Mask residual tandem (TTAGGC)2+ tracts (>=10 bp exact or 1-mismatch dimer) except [-6..+6] around pos0."""
+    if not seq or not repeat or len(seq) < 10:
+        return seq
+    rep = repeat.upper()
+    rc_rep = _revcomp(rep)
+    k = len(rep)
+    min_exact = min(10, 2 * k)
+    min_dimer = 2 * k
+    exact_kmers = {(rep * 3)[i : i + min_exact] for i in range(k)} | {
+        (rc_rep * 3)[i : i + min_exact] for i in range(k)
+    }
+    dimer_kmers = {(rep * 3)[i : i + min_dimer] for i in range(k)} | {
+        (rc_rep * 3)[i : i + min_dimer] for i in range(k)
+    }
+
+    n = len(seq)
+    s_up = seq.upper()
+    to_mask = [False] * n
+
+    for i in range(n - min_exact + 1):
+        if s_up[i : i + min_exact] in exact_kmers:
+            for j in range(i, i + min_exact):
+                to_mask[j] = True
+
+    for i in range(n - min_dimer + 1):
+        sub_d = s_up[i : i + min_dimer]
+        if any(
+            sum(1 for a, b in zip(sub_d, t, strict=False) if a != b) <= 1
+            for t in dimer_kmers
+        ):
+            for j in range(i, i + min_dimer):
+                to_mask[j] = True
+
+    prot_r = SSOT["cleavage_mh_protection_radius"]
+    prot_start = max(0, center_soma_len - prot_r)
+    prot_end = min(n, center_soma_len + prot_r)
+    for j in range(prot_start, prot_end):
+        to_mask[j] = False
+
+    return "".join("N" if to_mask[j] else seq[j] for j in range(n))
+
+
 def mask_core_motifs(
     core_meme: str | Path,
     fasta_file: str | Path,
     output_masked_fasta: str | Path,
     fimo_out_dir: str | Path,
     threshold: float = SSOT["fimo_core_threshold"],
+    repeat: str = SSOT["telomere_repeat"],
 ) -> tuple[dict[str, str], list[dict[str, Any]]]:
-    """Run FIMO with core motif on FASTA, mask instances with N, and save masked FASTA."""
+    """Run FIMO with core motif on FASTA, mask instances and residual telomeric tracts with N, and save masked FASTA."""
     seq_dict = load_fasta_dict(fasta_file)
+    soma_lens = load_soma_len_map(fasta_file)
     hits = run_fimo(
         core_meme, fasta_file, out_dir=fimo_out_dir, threshold=threshold
     )
     masked_dict = mask_sequences_with_hits(seq_dict, hits)
+    for name, mseq in list(masked_dict.items()):
+        pos0 = soma_lens.get(name, len(mseq) // 2)
+        masked_dict[name] = mask_residual_telomeric_tracts(
+            mseq, center_soma_len=pos0, repeat=repeat
+        )
 
     with open(output_masked_fasta, "w", encoding="utf-8") as f:
         for name, mseq in masked_dict.items():

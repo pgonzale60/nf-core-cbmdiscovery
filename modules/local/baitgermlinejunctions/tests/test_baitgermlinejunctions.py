@@ -421,6 +421,89 @@ class TestBaitGermlineJunctions(unittest.TestCase):
         self.assertEqual(census["median_c_germ"], 79.0)
         self.assertEqual(census["n_breaks"], 3)
 
+    def test_python_sequence_clustering_fallback(self):
+        from baitgerm.census import (
+            _extract_distal_soma_flank,
+            _python_cluster_pass,
+            deduplicate_break_windows,
+        )
+
+        # Create two windows sharing 90% identity across the first 130 bp (retained flank)
+        flank_base = "ATCGATCGATCG" * 10 + "ATCGATCGAT"  # 130 bp
+        flank_mut = flank_base[:100] + "GGGG" + flank_base[104:]  # 4 substitutions in 130 bp = 96.9% identity
+        win1 = flank_base + ("CCGG" * 42)[:170]
+        win2 = flank_mut + ("TTAA" * 42)[:170]
+
+        loc1 = {"anchor_id": "loc_1", "break_window": win1, "c_telo": 20, "c_germ": 10}
+        loc2 = {"anchor_id": "loc_2", "break_window": win2, "c_telo": 15, "c_germ": 8}
+
+        # 1. Test _extract_distal_soma_flank extracts window[:130]
+        self.assertEqual(_extract_distal_soma_flank(loc1), win1[:130])
+
+        # 2. Test _python_cluster_pass collapses loc1 and loc2
+        clusters = _python_cluster_pass(
+            [loc1, loc2],
+            seq_getter=_extract_distal_soma_flank,
+            min_identity=0.85,
+        )
+        self.assertEqual(len(clusters), 1)
+        self.assertEqual(clusters[0]["collapsed_copies"], 2)
+        self.assertEqual(clusters[0]["c_telo"], 35)
+
+        # 3. Test deduplicate_break_windows when vsearch is mocked as missing
+        with unittest.mock.patch("shutil.which", return_value=None):
+            deduped = deduplicate_break_windows([loc1, loc2], min_identity=0.85)
+            self.assertEqual(len(deduped), 1)
+            self.assertEqual(deduped[0]["collapsed_copies"], 2)
+
+    def test_tandem_satellite_window_exclusion(self):
+        from baitgerm.census import deconvolve_and_census, is_tandem_satellite_window
+
+        # 30 bp satellite monomer repeated 4 times
+        monomer_30bp = "GCCGAAGGCCCAGACTCAGATTAGGCTTAG"
+        sat_win = monomer_30bp * 4 + ("A" * 180)
+        self.assertTrue(is_tandem_satellite_window(sat_win))
+
+        # 15 bp satellite monomer repeated 5 times
+        monomer_15bp = "ACGTGCAACGTGCAA"
+        sat_win_15 = (monomer_15bp * 6) + ("C" * 210)
+        self.assertTrue(is_tandem_satellite_window(sat_win_15))
+
+        # Non-repetitive window must NOT be detected as satellite
+        clean_win = "ATCGATCGATCGATCGATCG" * 15
+        # Even with tandem repeats of 4-mer ATCG, it's a short microsatellite (<10 bp period), not a 10-100 bp satellite
+        self.assertFalse(is_tandem_satellite_window(clean_win))
+
+        # Satellite window must be classified as TANDEM_SATELLITE_ARRAY in deconvolve_and_census
+        loc_sat = {
+            "anchor_id": "sat_anchor",
+            "break_window": sat_win,
+            "c_telo": 25,
+            "c_germ": 10,
+            "coherence": 0.95,
+        }
+        loc_clean = {
+            "anchor_id": "clean_anchor",
+            "break_window": self.anchor_seq + self.germ_flank,
+            "c_telo": 25,
+            "c_germ": 10,
+            "coherence": 0.95,
+        }
+        classified, census = deconvolve_and_census([loc_sat, loc_clean], min_germ_reads=2)
+        class_map = {l["anchor_id"]: l["classification"] for l in classified}
+        self.assertEqual(class_map["sat_anchor"], "TANDEM_SATELLITE_ARRAY")
+        self.assertEqual(class_map["clean_anchor"], "PDE_BREAK_SITE")
+        self.assertEqual(census["n_satellite_excluded"], 1)
+
+    def test_residual_telomeric_tract_masking(self):
+        from baitgerm.reconstructor import mask_residual_telomeric_tracts
+
+        win = "A" * 50 + "TTAGGCTTAGGCTTAGGC" + "C" * 76 + "TTAGGCTTAGGC" + "G" * 144
+        self.assertEqual(len(win), 300)
+        masked = mask_residual_telomeric_tracts(win, center_soma_len=150)
+        self.assertEqual(masked[50:68], "N" * 18)
+        self.assertEqual(masked[144:156], win[144:156])
+
 
 if __name__ == "__main__":
     unittest.main()

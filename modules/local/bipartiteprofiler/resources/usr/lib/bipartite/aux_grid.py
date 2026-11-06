@@ -314,7 +314,10 @@ def is_telomeric_repeat_echo(
             if mm1_count >= 2:
                 best_cov_1mm = max(best_cov_1mm, sum(covered) / n)
 
-    is_echo = (exact_frac > SSOT["telomeric_echo_exact_kmer_cutoff"]) or (
+    # n >= 18 guard prevents false-positive rejection of short 13-14 bp bona fide CBMs
+    # (e.g. Caenorhabditis TTTCGCTTAGGCC) that partially overlap telomeric hexamers,
+    # while ensuring degenerate telomeric arrays (>=3 repeats, width >= 18) are rejected.
+    is_echo = (exact_frac >= SSOT["telomeric_echo_exact_kmer_cutoff"]) or (
         n >= 18 and best_cov_1mm >= SSOT["telomeric_echo_1mm_cov_cutoff"]
     )
     return is_echo, round(max(exact_frac, best_cov_1mm), 4)
@@ -486,6 +489,7 @@ def run_auxiliary_grid(
     out_dir: str | Path,
     bfile: str | None = None,
     threads: int = 1,
+    telomere_repeat: str = SSOT["telomere_repeat"],
 ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
     """Execute auxiliary grid search across 16 conditions on core-masked FASTA."""
     out_path = Path(out_dir)
@@ -519,7 +523,9 @@ def run_auxiliary_grid(
         for f in as_completed(futures):
             res = f.result()
             if res:
-                res["composite_score"] = score_auxiliary_candidate(res, total_sequences)
+                res["composite_score"] = score_auxiliary_candidate(
+                    res, total_sequences, telomere_repeat=telomere_repeat
+                )
                 results.append(res)
 
     # Check for significant auxiliary motif ranked by composite score

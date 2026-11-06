@@ -117,6 +117,7 @@ def write_sliced_fasta(
     radius: int,
     output_path: str | Path,
     center_soma_len: int | None = None,
+    repeat: str = SSOT["telomere_repeat"],
 ) -> int:
     """Write sliced records to output_path. Returns count of written records."""
     count = 0
@@ -128,7 +129,9 @@ def write_sliced_fasta(
                 else (len(seq) // 2 if seq else SSOT["max_soma_flank_len"])
             )
             s_len = extract_soma_len_from_header(header, default=fallback_len)
-            sliced = slice_window_at_radius(seq, radius, center_soma_len=s_len)
+            sliced = slice_window_at_radius(
+                seq, radius, center_soma_len=s_len, repeat=repeat
+            )
             pos0 = min(s_len, radius)
             if len(sliced) >= 20:  # Minimum valid window size
                 # Clean header for MEME compatibility and embed pos0 coordinate

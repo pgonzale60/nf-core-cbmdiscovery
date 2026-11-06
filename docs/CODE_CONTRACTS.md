@@ -105,9 +105,9 @@
 
 | Symbol | Kind | Lines | Signature | Summary |
 | :--- | :--- | :--- | :--- | :--- |
-| `parse_args` | `function` | `L34-L111` | `def parse_args()` | — |
-| `_reconstruct_single_anchor` | `function` | `L114-L161` | `def _reconstruct_single_anchor(task_args: tuple) -> dict` | — |
-| `main` | `function` | `L164-L319` | `def main()` | — |
+| `parse_args` | `function` | `L35-L112` | `def parse_args()` | — |
+| `_reconstruct_single_anchor` | `function` | `L115-L162` | `def _reconstruct_single_anchor(task_args: tuple) -> dict` | — |
+| `main` | `function` | `L165-L325` | `def main()` | — |
 
 ### `modules/local/baitgermlinejunctions/resources/usr/lib/baitgerm/__init__.py`
 *(No top-level functions or classes defined.)*
@@ -131,10 +131,13 @@
 | `is_tandem_satellite_window` | `function` | `L24-L55` | `def is_tandem_satellite_window(seq: str, min_period: int=SSOT['satellite_min_period'], max_period: int=SSOT['satellite_max_period'], min_copies: int=SSOT['satellite_min_copies']) -> bool` | Detect if a window contains a tandem satellite array of monomer length 10..100 bp repeating >= 3 times. |
 | `detect_tandem_repeats` | `function` | `L58-L101` | `def detect_tandem_repeats(seq: str, min_period: int=2, max_period: int=10, min_copies: float=2.0, min_identity: float=0.85, target_unit: str \| None=None) -> tuple[bool, int \| None, str \| None]` | Detects tandem periodic repeats via lagged self-comparison. |
 | `is_itr_germline_flank` | `function` | `L104-L113` | `def is_itr_germline_flank(seq: str, telomere_repeat: str=SSOT['telomere_repeat'], min_repeats: int=SSOT.get('itr_min_consecutive_repeats', 4)) -> bool` | Check whether reconstructed germline_consensus / flank contains >= min_repeats copies of telomeric repeat or reverse complement. |
-| `_vsearch_cluster_pass` | `function` | `L116-L194` | `def _vsearch_cluster_pass(loci: list[dict[str, Any]], seq_getter, min_identity: float, threads: int, vsearch_bin: str) -> list[dict[str, Any]]` | Run one pass of vsearch --cluster_fast using sequences from seq_getter. |
-| `_extract_distal_soma_flank` | `function` | `L197-L202` | `def _extract_distal_soma_flank(loc: dict[str, Any]) -> str` | Extract retained somatic flank excluding the immediate proximal CBM zone. |
-| `deduplicate_break_windows` | `function` | `L205-L239` | `def deduplicate_break_windows(loci: list[dict[str, Any]], min_identity: float=SSOT['stage3_min_identity'], threads: int=1) -> list[dict[str, Any]]` | Collapse break windows sharing >= min_identity across full window OR retained somatic flank. |
-| `deconvolve_and_census` | `function` | `L242-L401` | `def deconvolve_and_census(loci: list[dict[str, Any]], min_germ_reads: int=SSOT['min_germ_reads'], min_coherence: float=SSOT['min_coherence'], min_telo_reads: int=SSOT['min_telo_reads']) -> tuple[list[dict[str, Any]], dict[str, Any]]` | Classify anchors into PDE_BREAK_SITE, GERMLINE_NATIVE_TELOMERE, SHARED_NATIVE_TELOMERE, |
+| `_revcomp` | `function` | `L116-L119` | `def _revcomp(seq: str) -> str` | Reverse-complement a DNA sequence. |
+| `_compute_sequence_identity` | `function` | `L122-L153` | `def _compute_sequence_identity(s1: str, s2: str) -> float` | Compute pairwise sequence identity between two sequences (both strands). |
+| `_python_cluster_pass` | `function` | `L156-L206` | `def _python_cluster_pass(loci: list[dict[str, Any]], seq_getter, min_identity: float) -> list[dict[str, Any]]` | Cluster loci in pure Python when vsearch is not available. |
+| `_vsearch_cluster_pass` | `function` | `L209-L287` | `def _vsearch_cluster_pass(loci: list[dict[str, Any]], seq_getter, min_identity: float, threads: int, vsearch_bin: str) -> list[dict[str, Any]]` | Run one pass of vsearch --cluster_fast using sequences from seq_getter. |
+| `_extract_distal_soma_flank` | `function` | `L290-L296` | `def _extract_distal_soma_flank(loc: dict[str, Any]) -> str` | Extract retained somatic flank excluding the immediate proximal CBM zone (window[:130]). |
+| `deduplicate_break_windows` | `function` | `L299-L356` | `def deduplicate_break_windows(loci: list[dict[str, Any]], min_identity: float=SSOT['stage3_min_identity'], threads: int=1) -> list[dict[str, Any]]` | Collapse break windows sharing >= min_identity across full window OR retained somatic flank. |
+| `deconvolve_and_census` | `function` | `L359-L518` | `def deconvolve_and_census(loci: list[dict[str, Any]], min_germ_reads: int=SSOT['min_germ_reads'], min_coherence: float=SSOT['min_coherence'], min_telo_reads: int=SSOT['min_telo_reads']) -> tuple[list[dict[str, Any]], dict[str, Any]]` | Classify anchors into PDE_BREAK_SITE, GERMLINE_NATIVE_TELOMERE, SHARED_NATIVE_TELOMERE, |
 
 ### `modules/local/baitgermlinejunctions/resources/usr/lib/baitgerm/partitioner.py`
 
@@ -155,6 +158,7 @@
 | `reconstruct_germline_consensus` | `function` | `L67-L261` | `def reconstruct_germline_consensus(germline_extensions: list[str], max_len: int \| None=SSOT['max_germ_flank_len'], anchor_seq: str='', local_reads: list[str] \| None=None, mate_reads: list[str] \| None=None, threads: int=1) -> tuple[str, float]` | Reconstruct [+1 .. +max_len] germline consensus via vsearch (Case A) or fermi-lite (Case B). |
 | `annotate_microhomology` | `function` | `L264-L279` | `def annotate_microhomology(germline_consensus: str, repeat: str=SSOT['telomere_repeat']) -> tuple[int, str]` | Compare bases +1 .. +5 of germline consensus against cyclic prefixes of repeat. |
 | `build_300bp_break_window` | `function` | `L282-L302` | `def build_300bp_break_window(somatic_anchor: str, germline_consensus: str, soma_flank_target: int \| None=SSOT['max_soma_flank_len'], germ_flank_target: int \| None=SSOT['max_germ_flank_len']) -> str` | Construct break window centered at Position 0: |
+| `mask_residual_telomeric_tracts` | `function` | `L305-L350` | `def mask_residual_telomeric_tracts(seq: str, center_soma_len: int=SSOT['max_soma_flank_len'], repeat: str=SSOT['telomere_repeat']) -> str` | Mask residual tandem (TTAGGC)2+ tracts (>=10 bp exact or 1-mismatch dimer) except [-6..+6] around pos0. |
 
 ### `modules/local/baitgermlinejunctions/resources/usr/lib/cbm_defaults.py`
 
@@ -166,9 +170,9 @@
 
 | Symbol | Kind | Lines | Signature | Summary |
 | :--- | :--- | :--- | :--- | :--- |
-| `parse_args` | `function` | `L40-L55` | `def parse_args()` | — |
-| `build_higher_order_markov_bg` | `function` | `L58-L90` | `def build_higher_order_markov_bg(fasta_file: str \| Path, out_bg: Path) -> Path` | Build higher-order Markov background from distal flanking arms outside [-excl_r..+excl_r]. |
-| `main` | `function` | `L93-L300` | `def main()` | — |
+| `parse_args` | `function` | `L40-L60` | `def parse_args()` | — |
+| `build_higher_order_markov_bg` | `function` | `L63-L95` | `def build_higher_order_markov_bg(fasta_file: str \| Path, out_bg: Path) -> Path` | Build higher-order Markov background from distal flanking arms outside [-excl_r..+excl_r]. |
+| `main` | `function` | `L98-L307` | `def main()` | — |
 
 ### `modules/local/bipartiteprofiler/resources/usr/lib/bipartite/__init__.py`
 *(No top-level functions or classes defined.)*
@@ -183,10 +187,10 @@
 | `is_core_echo` | `function` | `L195-L202` | `def is_core_echo(aux_consensus: str, core_consensus: str) -> bool` | Return True if aux_consensus is a substring/superstring of core_consensus or its revcomp. |
 | `detect_tandem_repeats` | `function` | `L205-L226` | `def detect_tandem_repeats(seq: str, min_period: int=2, max_period: int=10, min_copies: float=2.0, min_identity: float=0.85) -> tuple[bool, int, float]` | Detect if sequence is a tandem repeat using lagged self-comparison. |
 | `extract_motif_n_from_meme` | `function` | `L229-L271` | `def extract_motif_n_from_meme(meme_txt_path: Path \| str, motif_num: int, output_aux_meme: Path \| str) -> dict[str, Any] \| None` | Extract secondary or tertiary motif from multi-motif MEME text output. |
-| `is_telomeric_repeat_echo` | `function` | `L274-L320` | `def is_telomeric_repeat_echo(consensus: str, repeat: str=SSOT['telomere_repeat']) -> tuple[bool, float]` | Check if motif consensus is a telomeric repeat echo (>=50% exact 6-mers or >=70% in-phase 1-mismatch coverage). |
-| `score_auxiliary_candidate` | `function` | `L323-L371` | `def score_auxiliary_candidate(cand: dict[str, Any] \| None, total_sequences: int=1, telomere_repeat: str=SSOT['telomere_repeat']) -> float` | Compute composite score for an auxiliary motif candidate without proximity bias. |
-| `run_localized_auxiliary_meme` | `function` | `L374-L481` | `def run_localized_auxiliary_meme(sliced_fasta: str \| Path, out_dir: str \| Path, bfile: str \| None=None, nmotifs: int=3, minw: int=6, maxw: int=30, mod: str='zoops', revcomp: bool=True, core_consensus: str='', total_sequences: int=1, telomere_repeat: str=SSOT['telomere_repeat']) -> tuple[dict[str, Any] \| None, list[dict[str, Any]]]` | Execute single targeted localized MEME command on sliced FASTA and evaluate auxiliary candidate motifs. |
-| `run_auxiliary_grid` | `function` | `L484-L545` | `def run_auxiliary_grid(masked_fasta: str \| Path, out_dir: str \| Path, bfile: str \| None=None, threads: int=1) -> tuple[dict[str, Any] \| None, list[dict[str, Any]]]` | Execute auxiliary grid search across 16 conditions on core-masked FASTA. |
+| `is_telomeric_repeat_echo` | `function` | `L274-L323` | `def is_telomeric_repeat_echo(consensus: str, repeat: str=SSOT['telomere_repeat']) -> tuple[bool, float]` | Check if motif consensus is a telomeric repeat echo (>=50% exact 6-mers or >=70% in-phase 1-mismatch coverage). |
+| `score_auxiliary_candidate` | `function` | `L326-L374` | `def score_auxiliary_candidate(cand: dict[str, Any] \| None, total_sequences: int=1, telomere_repeat: str=SSOT['telomere_repeat']) -> float` | Compute composite score for an auxiliary motif candidate without proximity bias. |
+| `run_localized_auxiliary_meme` | `function` | `L377-L484` | `def run_localized_auxiliary_meme(sliced_fasta: str \| Path, out_dir: str \| Path, bfile: str \| None=None, nmotifs: int=3, minw: int=6, maxw: int=30, mod: str='zoops', revcomp: bool=True, core_consensus: str='', total_sequences: int=1, telomere_repeat: str=SSOT['telomere_repeat']) -> tuple[dict[str, Any] \| None, list[dict[str, Any]]]` | Execute single targeted localized MEME command on sliced FASTA and evaluate auxiliary candidate motifs. |
+| `run_auxiliary_grid` | `function` | `L487-L551` | `def run_auxiliary_grid(masked_fasta: str \| Path, out_dir: str \| Path, bfile: str \| None=None, threads: int=1, telomere_repeat: str=SSOT['telomere_repeat']) -> tuple[dict[str, Any] \| None, list[dict[str, Any]]]` | Execute auxiliary grid search across 16 conditions on core-masked FASTA. |
 
 ### `modules/local/bipartiteprofiler/resources/usr/lib/bipartite/masker.py`
 
@@ -199,13 +203,16 @@
 | `has_motifs` | `function` | `L135-L143` | `def has_motifs(meme_file: str \| Path) -> bool` | Check if MEME file contains at least one MOTIF definition. |
 | `run_fimo` | `function` | `L146-L202` | `def run_fimo(meme_file: str \| Path, fasta_file: str \| Path, out_dir: str \| Path, threshold: float=SSOT['fimo_core_threshold']) -> list[dict[str, Any]]` | Execute FIMO to find motif occurrences passing threshold. |
 | `mask_sequences_with_hits` | `function` | `L205-L223` | `def mask_sequences_with_hits(seq_dict: dict[str, str], hits: list[dict[str, Any]]) -> dict[str, str]` | Mask hits with 'N' in each sequence. |
-| `mask_core_motifs` | `function` | `L226-L244` | `def mask_core_motifs(core_meme: str \| Path, fasta_file: str \| Path, output_masked_fasta: str \| Path, fimo_out_dir: str \| Path, threshold: float=SSOT['fimo_core_threshold']) -> tuple[dict[str, str], list[dict[str, Any]]]` | Run FIMO with core motif on FASTA, mask instances with N, and save masked FASTA. |
+| `_revcomp` | `function` | `L226-L228` | `def _revcomp(seq: str) -> str` | — |
+| `mask_residual_telomeric_tracts` | `function` | `L231-L275` | `def mask_residual_telomeric_tracts(seq: str, center_soma_len: int=SSOT['max_soma_flank_len'], repeat: str=SSOT['telomere_repeat']) -> str` | Mask residual tandem (TTAGGC)2+ tracts (>=10 bp exact or 1-mismatch dimer) except [-6..+6] around pos0. |
+| `mask_core_motifs` | `function` | `L278-L303` | `def mask_core_motifs(core_meme: str \| Path, fasta_file: str \| Path, output_masked_fasta: str \| Path, fimo_out_dir: str \| Path, threshold: float=SSOT['fimo_core_threshold'], repeat: str=SSOT['telomere_repeat']) -> tuple[dict[str, str], list[dict[str, Any]]]` | Run FIMO with core motif on FASTA, mask instances and residual telomeric tracts with N, and save masked FASTA. |
 
 ### `modules/local/bipartiteprofiler/resources/usr/lib/bipartite/reporter.py`
 
 | Symbol | Kind | Lines | Signature | Summary |
 | :--- | :--- | :--- | :--- | :--- |
-| `generate_cbm_discovery_report` | `function` | `L9-L107` | `def generate_cbm_discovery_report(sample_id: str, census_json_path: str \| Path, core_metrics_json_path: str \| Path, best_aux_motif: dict[str, Any] \| None, bipartite_summary: dict[str, Any], output_report_md: str \| Path)` | Generate comprehensive cbm_discovery_report.md markdown summary. |
+| `classify_pde_regime` | `function` | `L9-L64` | `def classify_pde_regime(n_unique_breaks: int, core_metrics: dict[str, Any] \| None=None, read_break_iqr: float=0.0) -> tuple[str, str]` | Classify sample into universal DSB-PDE regime: |
+| `generate_cbm_discovery_report` | `function` | `L67-L179` | `def generate_cbm_discovery_report(sample_id: str, census_json_path: str \| Path, core_metrics_json_path: str \| Path, best_aux_motif: dict[str, Any] \| None, bipartite_summary: dict[str, Any], output_report_md: str \| Path)` | Generate comprehensive cbm_discovery_report.md markdown summary. |
 
 ### `modules/local/bipartiteprofiler/resources/usr/lib/bipartite/spacing.py`
 
@@ -273,8 +280,8 @@
 
 | Symbol | Kind | Lines | Signature | Summary |
 | :--- | :--- | :--- | :--- | :--- |
-| `parse_args` | `function` | `L19-L54` | `def parse_args()` | — |
-| `main` | `function` | `L57-L82` | `def main()` | — |
+| `parse_args` | `function` | `L20-L60` | `def parse_args()` | — |
+| `main` | `function` | `L63-L89` | `def main()` | — |
 
 ### `modules/local/memecoregrid/resources/usr/lib/cbm_defaults.py`
 
@@ -291,11 +298,12 @@
 | :--- | :--- | :--- | :--- | :--- |
 | `calculate_consensus_entropy` | `function` | `L13-L25` | `def calculate_consensus_entropy(consensus: str) -> float` | Calculate Shannon entropy (in bits) across the characters of a consensus sequence. |
 | `_revcomp` | `function` | `L28-L30` | `def _revcomp(seq: str) -> str` | — |
-| `is_telomeric_repeat_echo` | `function` | `L33-L80` | `def is_telomeric_repeat_echo(consensus: str, repeat: str=SSOT['telomere_repeat']) -> tuple[bool, float]` | Check if motif consensus is a telomeric repeat echo (>=50% exact 6-mers or >=70% in-phase 1-mismatch coverage). |
-| `detect_tandem_repeats` | `function` | `L83-L128` | `def detect_tandem_repeats(seq: str, min_period: int=2, max_period: int=10, min_copies: float=2.0, min_identity: float=0.85, target_unit: str \| None=None) -> tuple[bool, int \| None, str \| None]` | Detects tandem periodic repeats via lagged self-comparison. |
-| `is_tandem_repeat_motif` | `function` | `L131-L146` | `def is_tandem_repeat_motif(consensus: str, min_period: int=2, max_period: int=10, min_copies: float=2.0, min_identity: float=0.85) -> bool` | Check whether consensus sequence has tandem repeating periodicity (e.g. 2-10 bp repeats >= 2 copies). |
-| `evaluate_meme_motif` | `function` | `L149-L216` | `def evaluate_meme_motif(consensus: str, width: int, mean_ic: float, occupancy: float, pos_iqr: float, median_offset: float, evalue: float, site_density: float=1.0, telomere_repeat: str=SSOT['telomere_repeat'], proximity_decay_bp: float \| None=None, max_density_credit: float \| None=None) -> dict[str, Any]` | Evaluate motif quality, rejection criteria, and compute composite score. |
-| `parse_meme_txt` | `function` | `L219-L356` | `def parse_meme_txt(txt_path: str \| Path, radius: int, total_sequences: int=1, telomere_repeat: str=SSOT['telomere_repeat']) -> dict[str, Any] \| None` | Parse MEME text output and compute comprehensive motif metrics. |
+| `is_telomeric_repeat_echo` | `function` | `L33-L83` | `def is_telomeric_repeat_echo(consensus: str, repeat: str=SSOT['telomere_repeat']) -> tuple[bool, float]` | Check if motif consensus is a telomeric repeat echo (>=50% exact 6-mers or >=70% in-phase 1-mismatch coverage). |
+| `detect_tandem_repeats` | `function` | `L86-L131` | `def detect_tandem_repeats(seq: str, min_period: int=2, max_period: int=10, min_copies: float=2.0, min_identity: float=0.85, target_unit: str \| None=None) -> tuple[bool, int \| None, str \| None]` | Detects tandem periodic repeats via lagged self-comparison. |
+| `is_tandem_repeat_motif` | `function` | `L134-L149` | `def is_tandem_repeat_motif(consensus: str, min_period: int=2, max_period: int=10, min_copies: float=2.0, min_identity: float=0.85) -> bool` | Check whether consensus sequence has tandem repeating periodicity (e.g. 2-10 bp repeats >= 2 copies). |
+| `evaluate_meme_motif` | `function` | `L152-L219` | `def evaluate_meme_motif(consensus: str, width: int, mean_ic: float, occupancy: float, pos_iqr: float, median_offset: float, evalue: float, site_density: float=1.0, telomere_repeat: str=SSOT['telomere_repeat'], proximity_decay_bp: float \| None=None, max_density_credit: float \| None=None) -> dict[str, Any]` | Evaluate motif quality, rejection criteria, and compute composite score. |
+| `parse_meme_txt` | `function` | `L222-L359` | `def parse_meme_txt(txt_path: str \| Path, radius: int, total_sequences: int=1, telomere_repeat: str=SSOT['telomere_repeat']) -> dict[str, Any] \| None` | Parse MEME text output and compute comprehensive motif metrics. |
+| `classify_pde_regime` | `function` | `L362-L410` | `def classify_pde_regime(n_unique_breaks: int, core_metrics: dict[str, Any] \| None=None, read_break_iqr: float=0.0) -> tuple[str, str]` | Classify sample into universal DSB-PDE regime: |
 
 ### `modules/local/memecoregrid/resources/usr/lib/memegrid/grid_runner.py`
 
@@ -303,9 +311,9 @@
 | :--- | :--- | :--- | :--- | :--- |
 | `generate_grid_conditions` | `function` | `L21-L37` | `def generate_grid_conditions(radii: list[int] \| None=None) -> list[dict[str, Any]]` | Generate parameter combinations across radius, model, strand, and width ranges. |
 | `build_distal_flank_markov_backgrounds` | `function` | `L40-L92` | `def build_distal_flank_markov_backgrounds(break_windows_fasta: str \| Path, output_dir: Path) -> tuple[list[int], dict[int, str]]` | Build candidate Markov backgrounds (m=0,1,2,3) from distal flanking arms outside [-excl_r..+excl_r]. |
-| `_run_single_condition` | `function` | `L95-L157` | `def _run_single_condition(meme_bin: str, cond: dict[str, Any], r_fa_str: str, cond_dir_str: str, total_seqs: int) -> dict[str, Any] \| None` | Run MEME for a single condition and parse metrics. |
-| `run_meme_grid` | `function` | `L160-L309` | `def run_meme_grid(break_windows_fasta: str \| Path, output_dir: str \| Path, radii: list[int] \| None=None, threads: int=1) -> tuple[dict[str, Any] \| None, list[dict[str, Any]]]` | Execute 3-phase hierarchical MEME parameter grid search. |
-| `export_grid_outputs` | `function` | `L312-L363` | `def export_grid_outputs(best_motif: dict[str, Any] \| None, grid_results: list[dict[str, Any]], output_meme: str \| Path, summary_tsv: str \| Path, metrics_json: str \| Path, output_background: str \| Path \| None=None)` | Save best_core_motif.meme, core_grid_summary.tsv, core_motif_metrics.json, and best_background.bfile. |
+| `_run_single_condition` | `function` | `L95-L161` | `def _run_single_condition(meme_bin: str, cond: dict[str, Any], r_fa_str: str, cond_dir_str: str, total_seqs: int, telomere_repeat: str=SSOT['telomere_repeat']) -> dict[str, Any] \| None` | Run MEME for a single condition and parse metrics. |
+| `run_meme_grid` | `function` | `L164-L320` | `def run_meme_grid(break_windows_fasta: str \| Path, output_dir: str \| Path, radii: list[int] \| None=None, threads: int=1, telomere_repeat: str=SSOT['telomere_repeat']) -> tuple[dict[str, Any] \| None, list[dict[str, Any]]]` | Execute 3-phase hierarchical MEME parameter grid search. |
+| `export_grid_outputs` | `function` | `L323-L374` | `def export_grid_outputs(best_motif: dict[str, Any] \| None, grid_results: list[dict[str, Any]], output_meme: str \| Path, summary_tsv: str \| Path, metrics_json: str \| Path, output_background: str \| Path \| None=None)` | Save best_core_motif.meme, core_grid_summary.tsv, core_motif_metrics.json, and best_background.bfile. |
 
 ### `modules/local/memecoregrid/resources/usr/lib/memegrid/slicer.py`
 
@@ -316,4 +324,4 @@
 | `_revcomp` | `function` | `L42-L44` | `def _revcomp(seq: str) -> str` | — |
 | `mask_residual_telomeric_tracts` | `function` | `L47-L90` | `def mask_residual_telomeric_tracts(seq: str, center_soma_len: int=SSOT['max_soma_flank_len'], repeat: str=SSOT['telomere_repeat']) -> str` | Mask residual tandem (TTAGGC)2+ tracts (>=10 bp exact or 1-mismatch dimer) except [-6..+6] around pos0. |
 | `slice_window_at_radius` | `function` | `L93-L112` | `def slice_window_at_radius(seq: str, radius: int, center_soma_len: int=SSOT['max_soma_flank_len'], repeat: str=SSOT['telomere_repeat']) -> str` | Slice sequence centered at boundary between somatic and germline flank. |
-| `write_sliced_fasta` | `function` | `L115-L138` | `def write_sliced_fasta(records: list[tuple[str, str]], radius: int, output_path: str \| Path, center_soma_len: int \| None=None) -> int` | Write sliced records to output_path. Returns count of written records. |
+| `write_sliced_fasta` | `function` | `L115-L141` | `def write_sliced_fasta(records: list[tuple[str, str]], radius: int, output_path: str \| Path, center_soma_len: int \| None=None, repeat: str=SSOT['telomere_repeat']) -> int` | Write sliced records to output_path. Returns count of written records. |

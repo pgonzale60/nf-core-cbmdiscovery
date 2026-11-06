@@ -10,7 +10,7 @@ import subprocess
 from typing import Any
 
 from cbm_defaults import SSOT
-from .evaluator import parse_meme_txt
+from .evaluator import classify_pde_regime, parse_meme_txt
 from .slicer import extract_soma_len_from_header, load_fasta, write_sliced_fasta
 
 RADII = SSOT["core_grid_radii"]
@@ -98,6 +98,7 @@ def _run_single_condition(
     r_fa_str: str,
     cond_dir_str: str,
     total_seqs: int,
+    telomere_repeat: str = SSOT["telomere_repeat"],
 ) -> dict[str, Any] | None:
     """Run MEME for a single condition and parse metrics."""
     cond_dir = Path(cond_dir_str)
@@ -140,7 +141,10 @@ def _run_single_condition(
 
     if meme_txt.exists():
         metrics = parse_meme_txt(
-            str(meme_txt), radius=r, total_sequences=total_seqs
+            str(meme_txt),
+            radius=r,
+            total_sequences=total_seqs,
+            telomere_repeat=telomere_repeat,
         )
         if metrics:
             metrics["condition_id"] = cid
@@ -162,6 +166,7 @@ def run_meme_grid(
     output_dir: str | Path,
     radii: list[int] | None = None,
     threads: int = 1,
+    telomere_repeat: str = SSOT["telomere_repeat"],
 ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
     """Execute 3-phase hierarchical MEME parameter grid search."""
     out_path = Path(output_dir)
@@ -192,7 +197,7 @@ def run_meme_grid(
     sliced_fastas = {}
     for r in selected_radii:
         r_fa = sliced_dir / f"windows_radius_{r}bp.fasta"
-        write_sliced_fasta(records, r, r_fa)
+        write_sliced_fasta(records, r, r_fa, repeat=telomere_repeat)
         sliced_fastas[r] = r_fa
 
     runs_dir = out_path / "runs"
@@ -219,6 +224,7 @@ def run_meme_grid(
                     r_fa_str,
                     c_dir_str,
                     total_seqs,
+                    telomere_repeat,
                 )
                 for cond, r_fa_str, c_dir_str in batch_tasks
             ]
@@ -305,6 +311,11 @@ def run_meme_grid(
     )
     if bg_src and os.path.exists(bg_src):
         shutil.copy(bg_src, out_path / "best_background.bfile")
+
+    if best_motif:
+        regime, rationale = classify_pde_regime(total_seqs, best_motif)
+        best_motif["pde_regime"] = regime
+        best_motif["pde_regime_rationale"] = rationale
 
     return best_motif, all_results
 

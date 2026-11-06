@@ -300,3 +300,52 @@ def build_300bp_break_window(
         else germline_consensus
     )
     return soma_flank + germ_flank
+
+
+def mask_residual_telomeric_tracts(
+    seq: str,
+    center_soma_len: int = SSOT["max_soma_flank_len"],
+    repeat: str = SSOT["telomere_repeat"],
+) -> str:
+    """Mask residual tandem (TTAGGC)2+ tracts (>=10 bp exact or 1-mismatch dimer) except [-6..+6] around pos0."""
+    if not seq or not repeat or len(seq) < 10:
+        return seq
+    rep = repeat.upper()
+    rc_rep = revcomp(rep)
+    k = len(rep)
+    min_exact = min(10, 2 * k)
+    min_dimer = 2 * k
+    exact_kmers = {(rep * 3)[i : i + min_exact] for i in range(k)} | {
+        (rc_rep * 3)[i : i + min_exact] for i in range(k)
+    }
+    dimer_kmers = {(rep * 3)[i : i + min_dimer] for i in range(k)} | {
+        (rc_rep * 3)[i : i + min_dimer] for i in range(k)
+    }
+
+    n = len(seq)
+    s_up = seq.upper()
+    to_mask = [False] * n
+
+    for i in range(n - min_exact + 1):
+        if s_up[i : i + min_exact] in exact_kmers:
+            for j in range(i, i + min_exact):
+                to_mask[j] = True
+
+    for i in range(n - min_dimer + 1):
+        sub_d = s_up[i : i + min_dimer]
+        if any(
+            sum(1 for a, b in zip(sub_d, t, strict=False) if a != b) <= 1
+            for t in dimer_kmers
+        ):
+            for j in range(i, i + min_dimer):
+                to_mask[j] = True
+
+    # Preserve [-prot_r .. +prot_r] around Position 0 for cleavage microhomology
+    prot_r = SSOT["cleavage_mh_protection_radius"]
+    prot_start = max(0, center_soma_len - prot_r)
+    prot_end = min(n, center_soma_len + prot_r)
+    for j in range(prot_start, prot_end):
+        to_mask[j] = False
+
+    return "".join("N" if to_mask[j] else seq[j] for j in range(n))
+

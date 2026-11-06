@@ -10,6 +10,7 @@ _LIB_DIR = Path(__file__).resolve().parent.parent / "lib"
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
+from cbm_defaults import SSOT  # noqa: E402
 from memegrid.grid_runner import (  # noqa: E402
     export_grid_outputs,
     run_meme_grid,
@@ -49,6 +50,11 @@ def parse_args():
         help="Output winning Markov background file",
     )
     parser.add_argument(
+        "--telomere-repeat",
+        default=SSOT["telomere_repeat"],
+        help="Telomere repeat motif",
+    )
+    parser.add_argument(
         "--threads", type=int, default=1, help="Threads for MEME"
     )
     return parser.parse_args()
@@ -60,6 +66,7 @@ def main():
         break_windows_fasta=args.break_windows,
         output_dir=args.output_dir,
         threads=args.threads,
+        telomere_repeat=args.telomere_repeat,
     )
 
     export_grid_outputs(

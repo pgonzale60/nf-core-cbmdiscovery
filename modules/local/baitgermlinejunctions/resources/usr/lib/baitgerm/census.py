@@ -39,7 +39,7 @@ def is_tandem_satellite_window(
     upper_p = min(max_period, n // min_copies)
     for p in range(min_period, upper_p + 1):
         span = p * min_copies
-        for start in range(0, n - span + 1, 4):
+        for start in range(0, n - span + 1, 2):
             m1 = s[start : start + p]
             m2 = s[start + p : start + 2 * p]
             m3 = s[start + 2 * p : start + 3 * p]
@@ -111,6 +111,99 @@ def is_itr_germline_flank(
         seq, min_copies=min_repeats, min_identity=0.85, target_unit=telomere_repeat
     )
     return found
+
+
+def _revcomp(seq: str) -> str:
+    """Reverse-complement a DNA sequence."""
+    tr = str.maketrans("ACGTNacgtn", "TGCANtgcan")
+    return seq.translate(tr)[::-1]
+
+
+def _compute_sequence_identity(s1: str, s2: str) -> float:
+    """Compute pairwise sequence identity between two sequences (both strands)."""
+    if not s1 or not s2:
+        return 0.0
+    s1_u = s1.upper()
+    s2_u = s2.upper()
+    rc_s2 = _revcomp(s2_u)
+
+    def _strand_id(a: str, b: str) -> float:
+        l_max = max(len(a), len(b))
+        if l_max == 0:
+            return 0.0
+        if abs(len(a) - len(b)) <= 6:
+            best = 0
+            for shift in range(-6, 7):
+                if shift >= 0:
+                    sub_a = a[shift : shift + len(b)]
+                    sub_b = b[: len(sub_a)]
+                else:
+                    sub_b = b[-shift : -shift + len(a)]
+                    sub_a = a[: len(sub_b)]
+                if len(sub_a) > 0:
+                    matches = sum(
+                        1 for x, y in zip(sub_a, sub_b, strict=False) if x == y
+                    )
+                    best = max(best, matches)
+            return best / l_max
+        from difflib import SequenceMatcher
+
+        return SequenceMatcher(None, a, b).ratio()
+
+    return max(_strand_id(s1_u, s2_u), _strand_id(s1_u, rc_s2))
+
+
+def _python_cluster_pass(
+    loci: list[dict[str, Any]],
+    seq_getter,
+    min_identity: float,
+) -> list[dict[str, Any]]:
+    """Cluster loci in pure Python when vsearch is not available."""
+    if len(loci) <= 1:
+        return [dict(l, collapsed_copies=l.get("collapsed_copies", 1)) for l in loci]
+
+    sorted_loci = sorted(
+        [dict(l, collapsed_copies=l.get("collapsed_copies", 1)) for l in loci],
+        key=lambda x: (x.get("c_telo", 0) + x.get("c_germ", 0)),
+        reverse=True,
+    )
+
+    clusters: list[list[dict[str, Any]]] = []
+    centroid_seqs: list[str] = []
+
+    for loc in sorted_loci:
+        seq = seq_getter(loc)
+        if not seq or len(seq) < 20:
+            clusters.append([loc])
+            centroid_seqs.append("")
+            continue
+
+        assigned = False
+        for c_idx, c_seq in enumerate(centroid_seqs):
+            if c_seq and _compute_sequence_identity(seq, c_seq) >= min_identity:
+                clusters[c_idx].append(loc)
+                assigned = True
+                break
+
+        if not assigned:
+            clusters.append([loc])
+            centroid_seqs.append(seq)
+
+    deduped: list[dict[str, Any]] = []
+    for members in clusters:
+        rep = dict(members[0])
+        rep["collapsed_copies"] = sum(
+            m.get("collapsed_copies", 1) for m in members
+        )
+        for m in members[1:]:
+            rep["c_telo"] = rep.get("c_telo", 0) + m.get("c_telo", 0)
+            rep["c_germ"] = rep.get("c_germ", 0) + m.get("c_germ", 0)
+            for k in ("anchor_seq", "germline_consensus", "break_window"):
+                if len(m.get(k, "")) > len(rep.get(k, "")):
+                    rep[k] = m[k]
+        deduped.append(rep)
+
+    return deduped
 
 
 def _vsearch_cluster_pass(
@@ -195,11 +288,12 @@ def _vsearch_cluster_pass(
 
 
 def _extract_distal_soma_flank(loc: dict[str, Any]) -> str:
-    """Extract retained somatic flank excluding the immediate proximal CBM zone."""
+    """Extract retained somatic flank excluding the immediate proximal CBM zone (window[:130])."""
+    w = loc.get("break_window") or loc.get("anchor_seq", "")
+    if len(w) >= 130:
+        return w[:130]
     cbm_excl = SSOT["somatic_dedup_cbm_exclusion_bp"]
-    max_soma = SSOT["max_soma_flank_len"]
-    s = loc.get("anchor_seq") or loc.get("break_window", "")[:max_soma]
-    return s[:-cbm_excl] if len(s) > cbm_excl + 20 else s
+    return w[:-cbm_excl] if len(w) > cbm_excl + 20 else w
 
 
 def deduplicate_break_windows(
@@ -217,26 +311,49 @@ def deduplicate_break_windows(
 
     vsearch_bin = shutil.which("vsearch")
     if not vsearch_bin:
-        raise RuntimeError("Required binary 'vsearch' not found in PATH")
+        pass1 = _python_cluster_pass(
+            loci,
+            seq_getter=lambda l: l.get("break_window") or l.get("anchor_seq", ""),
+            min_identity=min_identity,
+        )
+        flank_id = min(min_identity, SSOT["stage3_min_identity"])
+        return _python_cluster_pass(
+            pass1,
+            seq_getter=_extract_distal_soma_flank,
+            min_identity=flank_id,
+        )
 
-    # Pass 1: Full break window deduplication
-    pass1 = _vsearch_cluster_pass(
-        loci,
-        seq_getter=lambda l: l.get("break_window") or l.get("anchor_seq", ""),
-        min_identity=min_identity,
-        threads=threads,
-        vsearch_bin=vsearch_bin,
-    )
+    try:
+        # Pass 1: Full break window deduplication
+        pass1 = _vsearch_cluster_pass(
+            loci,
+            seq_getter=lambda l: l.get("break_window") or l.get("anchor_seq", ""),
+            min_identity=min_identity,
+            threads=threads,
+            vsearch_bin=vsearch_bin,
+        )
 
-    # Pass 2: Paralogous/satellite retained somatic flank deduplication
-    flank_id = min(min_identity, SSOT["stage3_min_identity"])
-    return _vsearch_cluster_pass(
-        pass1,
-        seq_getter=_extract_distal_soma_flank,
-        min_identity=flank_id,
-        threads=threads,
-        vsearch_bin=vsearch_bin,
-    )
+        # Pass 2: Distal somatic flank deduplication (paralogous families)
+        flank_id = min(min_identity, SSOT["stage3_min_identity"])
+        return _vsearch_cluster_pass(
+            pass1,
+            seq_getter=_extract_distal_soma_flank,
+            min_identity=flank_id,
+            threads=threads,
+            vsearch_bin=vsearch_bin,
+        )
+    except Exception:
+        pass1 = _python_cluster_pass(
+            loci,
+            seq_getter=lambda l: l.get("break_window") or l.get("anchor_seq", ""),
+            min_identity=min_identity,
+        )
+        flank_id = min(min_identity, SSOT["stage3_min_identity"])
+        return _python_cluster_pass(
+            pass1,
+            seq_getter=_extract_distal_soma_flank,
+            min_identity=flank_id,
+        )
 
 
 def deconvolve_and_census(

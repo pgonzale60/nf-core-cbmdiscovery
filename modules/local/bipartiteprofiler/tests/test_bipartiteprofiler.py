@@ -460,6 +460,86 @@ class TestBipartiteProfiler(unittest.TestCase):
         self.assertEqual(score_sat, 0.0)
         self.assertEqual(cand_sat["rejection_flag"], "REJECTED_TANDEM_REPEAT")
 
+    def test_telomeric_echo_rejection_in_auxiliary_grid(self):
+        from bipartite.aux_grid import is_telomeric_repeat_echo, score_auxiliary_candidate
+
+        # 1. Exact 6-mer telomeric motif candidate
+        cand_telo = {
+            "consensus": "TTAGGCTTAGGC",
+            "width": 12,
+            "nsites": 10,
+            "evalue": 1e-20,
+            "mean_ic": 1.9,
+            "total_ic": 22.8,
+            "consensus_entropy": 1.4,
+            "unique_sequences_hit": 10,
+        }
+        score = score_auxiliary_candidate(cand_telo, total_sequences=10)
+        self.assertEqual(score, 0.0)
+        self.assertEqual(cand_telo.get("rejection_flag"), "REJECTED_TELOMERIC_ECHO")
+        self.assertEqual(cand_telo.get("composite_score"), 0.0)
+
+        # 2. Test with custom repeat
+        is_echo_hum, frac_hum = is_telomeric_repeat_echo("TTAGGGTTAGGGTTAGGG", repeat="TTAGGG")
+        self.assertTrue(is_echo_hum)
+        self.assertGreaterEqual(frac_hum, 0.5)
+
+    def test_mask_residual_telomeric_tracts_in_masker(self):
+        from bipartite.masker import mask_residual_telomeric_tracts
+
+        win = "A" * 50 + "TTAGGCTTAGGCTTAGGC" + "C" * 76 + "TTAGGCTTAGGC" + "G" * 144
+        self.assertEqual(len(win), 300)
+        masked = mask_residual_telomeric_tracts(win, center_soma_len=150)
+        # Distal tract at 50..68 must be masked with N
+        self.assertEqual(masked[50:68], "N" * 18)
+        # Cleavage junction [-6..+6] (144..156) must remain unmasked
+        self.assertEqual(masked[144:156], win[144:156])
+
+    def test_universal_pde_regime_report_and_metrics(self):
+        import json
+        from bipartite.reporter import classify_pde_regime, generate_cbm_discovery_report
+
+        # Test classify_pde_regime across classes
+        r1, d1 = classify_pde_regime(12, {"evalue": 1e-6, "rejection_flag": "PASS", "positional_iqr": 20.0})
+        self.assertEqual(r1, "CLASS_I_PUNCTATE_MOTIF_PDE")
+
+        r2, d2 = classify_pde_regime(12, {"evalue": 0.5, "rejection_flag": "REJECTED_INSIGNIFICANT_EVALUE"})
+        self.assertEqual(r2, "CLASS_II_ZONAL_CBR_PDE")
+
+        r3, d3 = classify_pde_regime(120, None)
+        self.assertEqual(r3, "CLASS_III_HIGH_DENSITY_FRAGMENTATION_PDE")
+
+        r4, d4 = classify_pde_regime(3, None)
+        self.assertEqual(r4, "PDE_NEGATIVE")
+
+        # Test report generation includes regime and updates core_metrics_json
+        with tempfile.NamedTemporaryFile("w", suffix=".json") as f_census, \
+             tempfile.NamedTemporaryFile("w", suffix=".json") as f_core, \
+             tempfile.NamedTemporaryFile("w", suffix=".md") as f_rep:
+
+            f_census.write('{"n_breaks": 12, "median_c_soma": 30.0, "median_c_germ": 6.0, "germline_fraction": 0.167}')
+            f_census.flush()
+
+            f_core.write('{"consensus": "TGTTCA", "width": 6, "mean_ic": 1.95, "evalue": 1e-6, "positional_iqr": 15.0, "rejection_flag": "PASS"}')
+            f_core.flush()
+
+            generate_cbm_discovery_report(
+                sample_id="regime_test",
+                census_json_path=f_census.name,
+                core_metrics_json_path=f_core.name,
+                best_aux_motif=None,
+                bipartite_summary={},
+                output_report_md=f_rep.name,
+            )
+
+            rep_text = pathlib.Path(f_rep.name).read_text(encoding="utf-8")
+            self.assertIn("CLASS_I_PUNCTATE_MOTIF_PDE", rep_text)
+            self.assertIn("Universal DSB-PDE Regime", rep_text)
+
+            # Assert core_metrics_json was updated with pde_regime
+            updated_core = json.loads(pathlib.Path(f_core.name).read_text(encoding="utf-8"))
+            self.assertEqual(updated_core.get("pde_regime"), "CLASS_I_PUNCTATE_MOTIF_PDE")
+
 
 if __name__ == "__main__":
     unittest.main()

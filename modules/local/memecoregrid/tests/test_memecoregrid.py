@@ -520,6 +520,73 @@ sites sorted by position p-value
         self.assertGreater(score_prox["iqr_penalty"], score_dist_non_sat["iqr_penalty"])
         self.assertGreater(score_prox["composite_score"], score_dist_non_sat["composite_score"])
 
+    def test_telomeric_echo_hard_rejection_criteria(self):
+        from memegrid.evaluator import is_telomeric_repeat_echo
+
+        # 1. Exact 50% 6-mers match must be rejected
+        # 12 bp motif with exactly 2 copies of 6-mer = 100% exact 6-mers
+        is_echo, frac = is_telomeric_repeat_echo("TTAGGCTTAGGC")
+        self.assertTrue(is_echo)
+        self.assertGreaterEqual(frac, 0.5)
+
+        # 2. Motifs matching cyclic permutations of human telomeric repeat TTAGGG
+        is_echo_hum, frac_hum = is_telomeric_repeat_echo("TTAGGGTTAGGGTTAGGG", repeat="TTAGGG")
+        self.assertTrue(is_echo_hum)
+        self.assertGreaterEqual(frac_hum, 0.5)
+
+        # 3. Degenerate 1-mismatch repeat across >= 70% width must be rejected
+        is_echo_deg, frac_deg = is_telomeric_repeat_echo("TTAGGCTTAGACTAAGGCTTA")
+        self.assertTrue(is_echo_deg)
+        self.assertGreaterEqual(frac_deg, 0.7)
+
+        # 4. Authentic non-telomeric motifs must pass
+        is_echo_ok, _ = is_telomeric_repeat_echo("TTCTGGTTTAGGCTCAGCCTATGCCATAA")
+        self.assertFalse(is_echo_ok)
+
+    def test_universal_pde_regime_classifier(self):
+        from memegrid.evaluator import classify_pde_regime
+
+        # 1. CLASS_I_PUNCTATE_MOTIF_PDE: N_breaks >= 4, E < 0.01, positional IQR <= 60
+        regime_1, desc_1 = classify_pde_regime(
+            n_unique_breaks=8,
+            core_metrics={
+                "evalue": 1.2e-7,
+                "rejection_flag": "PASS",
+                "positional_iqr": 24.5,
+            },
+            read_break_iqr=15.0,
+        )
+        self.assertEqual(regime_1, "CLASS_I_PUNCTATE_MOTIF_PDE")
+        self.assertIn("Punctate CBM", desc_1)
+
+        # 2. CLASS_II_ZONAL_CBR_PDE: N_breaks >= 4 but E >= 0.01 or non-significant
+        regime_2, desc_2 = classify_pde_regime(
+            n_unique_breaks=10,
+            core_metrics={
+                "evalue": 0.35,
+                "rejection_flag": "REJECTED_INSIGNIFICANT_EVALUE",
+                "positional_iqr": 85.0,
+            },
+        )
+        self.assertEqual(regime_2, "CLASS_II_ZONAL_CBR_PDE")
+        self.assertIn("Zonal Chromosomal Breakage Region", desc_2)
+
+        # 3. CLASS_III_HIGH_DENSITY_FRAGMENTATION_PDE: N_breaks >= 100
+        regime_3, desc_3 = classify_pde_regime(
+            n_unique_breaks=150,
+            core_metrics=None,
+        )
+        self.assertEqual(regime_3, "CLASS_III_HIGH_DENSITY_FRAGMENTATION_PDE")
+        self.assertIn("High-Density Micro-Chromosome Fragmentation", desc_3)
+
+        # 4. PDE_NEGATIVE: N_breaks < 4
+        regime_neg, desc_neg = classify_pde_regime(
+            n_unique_breaks=2,
+            core_metrics={"evalue": 1e-10, "rejection_flag": "PASS", "positional_iqr": 10.0},
+        )
+        self.assertEqual(regime_neg, "PDE_NEGATIVE")
+        self.assertIn("Negative for Programmed DNA Elimination", desc_neg)
+
 
 if __name__ == "__main__":
     unittest.main()

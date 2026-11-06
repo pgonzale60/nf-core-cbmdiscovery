@@ -6,6 +6,64 @@ from pathlib import Path
 from typing import Any
 
 
+def classify_pde_regime(
+    n_unique_breaks: int,
+    core_metrics: dict[str, Any] | None = None,
+    read_break_iqr: float = 0.0,
+) -> tuple[str, str]:
+    """Classify sample into universal DSB-PDE regime:
+
+    - CLASS_I_PUNCTATE_MOTIF_PDE
+    - CLASS_II_ZONAL_CBR_PDE
+    - CLASS_III_HIGH_DENSITY_FRAGMENTATION_PDE
+    - PDE_NEGATIVE
+    Returns (regime_name, rationale_description).
+    """
+    if n_unique_breaks >= 100:
+        return (
+            "CLASS_III_HIGH_DENSITY_FRAGMENTATION_PDE",
+            f"High-Density Micro-Chromosome Fragmentation PDE ({n_unique_breaks} breaks >= 100 with terminal microhomology).",
+        )
+    if n_unique_breaks < 4:
+        return (
+            "PDE_NEGATIVE",
+            f"Negative for Programmed DNA Elimination ({n_unique_breaks} breaks < 4 after filtering).",
+        )
+
+    # For 4 <= n_breaks < 100, check Tier-1 Core Motif significance and spatial dispersion
+    if core_metrics:
+        evalue_val = core_metrics.get("evalue")
+        if evalue_val is None:
+            estr = core_metrics.get("evalue_str")
+            if estr:
+                try:
+                    evalue_val = float(estr)
+                except ValueError:
+                    evalue_val = 1.0
+            else:
+                evalue_val = 1.0
+        try:
+            evalue = float(evalue_val)
+        except (ValueError, TypeError):
+            evalue = 1.0
+        rejection_flag = core_metrics.get("rejection_flag", "PASS")
+        try:
+            pos_iqr = float(core_metrics.get("positional_iqr", 100.0))
+        except (ValueError, TypeError):
+            pos_iqr = 100.0
+        is_pass = rejection_flag == "PASS"
+        if is_pass and evalue < 0.01 and pos_iqr <= 60.0 and read_break_iqr < 50.0:
+            return (
+                "CLASS_I_PUNCTATE_MOTIF_PDE",
+                f"Punctate CBM Programmed DNA Elimination with localized cleavage motif ({n_unique_breaks} breaks >= 4, E = {evalue:.2e} < 0.01, positional IQR = {pos_iqr:.1f} bp <= 60 bp).",
+            )
+
+    return (
+        "CLASS_II_ZONAL_CBR_PDE",
+        f"Zonal Chromosomal Breakage Region (CBR) Programmed DNA Elimination ({n_unique_breaks} breaks >= 4 without localized point motif).",
+    )
+
+
 def generate_cbm_discovery_report(
     sample_id: str,
     census_json_path: str | Path,
@@ -25,10 +83,24 @@ def generate_cbm_discovery_report(
         with open(core_metrics_json_path, encoding="utf-8") as f:
             core_metrics = json.load(f)
 
+    n_breaks = int(census.get("n_breaks", 0))
+    pde_regime, pde_rationale = classify_pde_regime(n_breaks, core_metrics)
+
+    if core_metrics:
+        core_metrics["pde_regime"] = pde_regime
+        core_metrics["pde_regime_rationale"] = pde_rationale
+        try:
+            with open(core_metrics_json_path, "w", encoding="utf-8") as f_cm:
+                json.dump(core_metrics, f_cm, indent=2)
+        except OSError:
+            pass
+
     md = [
         f"# CBM Discovery & PDE Junction Report: `{sample_id}`\n",
         "## 1. Executive Summary\n",
         f"- **Sample ID**: `{sample_id}`",
+        f"- **Universal DSB-PDE Regime**: `{pde_regime}`",
+        f"- **Regime Diagnosis**: {pde_rationale}",
         f"- **PDE Breakpoints Identified (N_breaks)**: `{census.get('n_breaks', 'N/A')}`",
         f"- **Germline Native Telomeres (N_germ_telo)**: `{census.get('n_germ_telo', 'N/A')}`",
         f"- **Estimated Germline Chromosome Count**: `{census.get('estimated_germline_chromosomes', 'N/A')}`",

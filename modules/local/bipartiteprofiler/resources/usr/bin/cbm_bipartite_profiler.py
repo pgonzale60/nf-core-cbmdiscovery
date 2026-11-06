@@ -51,6 +51,11 @@ def parse_args():
     parser.add_argument("--output-spacing-tsv", default="bipartite_spacing_summary.tsv", help="Spacing TSV")
     parser.add_argument("--output-report", default="cbm_discovery_report.md", help="Output markdown report")
     parser.add_argument("--output-masked-fasta", default="break_sequences.core_masked.fasta", help="Masked FASTA")
+    parser.add_argument(
+        "--telomere-repeat",
+        default=SSOT["telomere_repeat"],
+        help="Canonical telomere repeat motif",
+    )
     parser.add_argument("--threads", type=int, default=1, help="Threads for MEME/FIMO/SpaMo")
     return parser.parse_args()
 
@@ -176,6 +181,7 @@ def main():
         output_masked_fasta=args.output_masked_fasta,
         fimo_out_dir=work_dir / "fimo_core_hits",
         threshold=SSOT["fimo_core_threshold"],
+        repeat=args.telomere_repeat,
     )
 
     core_hits_by_seq = defaultdict(list)
@@ -236,6 +242,7 @@ def main():
             revcomp=True,
             core_consensus=core_consensus,
             total_sequences=len(seq_names),
+            telomere_repeat=args.telomere_repeat,
         )
 
         if best_candidate and best_candidate.get("meme_txt_path") and os.path.exists(best_candidate["meme_txt_path"]):

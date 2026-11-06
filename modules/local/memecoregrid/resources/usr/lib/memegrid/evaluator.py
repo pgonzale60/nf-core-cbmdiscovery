@@ -74,7 +74,10 @@ def is_telomeric_repeat_echo(
             if mm1_count >= 2:
                 best_cov_1mm = max(best_cov_1mm, sum(covered) / n)
 
-    is_echo = (exact_frac > SSOT["telomeric_echo_exact_kmer_cutoff"]) or (
+    # n >= 18 guard prevents false-positive rejection of short 13-14 bp bona fide CBMs
+    # (e.g. Caenorhabditis TTTCGCTTAGGCC) that partially overlap telomeric hexamers,
+    # while ensuring degenerate telomeric arrays (>=3 repeats, width >= 18) are rejected.
+    is_echo = (exact_frac >= SSOT["telomeric_echo_exact_kmer_cutoff"]) or (
         n >= 18 and best_cov_1mm >= SSOT["telomeric_echo_1mm_cov_cutoff"]
     )
     return is_echo, round(max(exact_frac, best_cov_1mm), 4)
@@ -354,3 +357,55 @@ def parse_meme_txt(
         "rejection_flag": eval_res["rejection_flag"],
         "composite_score": eval_res["composite_score"],
     }
+
+
+def classify_pde_regime(
+    n_unique_breaks: int,
+    core_metrics: dict[str, Any] | None = None,
+    read_break_iqr: float = 0.0,
+) -> tuple[str, str]:
+    """Classify sample into universal DSB-PDE regime:
+
+    - CLASS_I_PUNCTATE_MOTIF_PDE
+    - CLASS_II_ZONAL_CBR_PDE
+    - CLASS_III_HIGH_DENSITY_FRAGMENTATION_PDE
+    - PDE_NEGATIVE
+    Returns (regime_name, rationale_description).
+    """
+    if n_unique_breaks >= 100:
+        return (
+            "CLASS_III_HIGH_DENSITY_FRAGMENTATION_PDE",
+            f"High-Density Micro-Chromosome Fragmentation PDE ({n_unique_breaks} breaks >= 100 with terminal microhomology).",
+        )
+    if n_unique_breaks < 4:
+        return (
+            "PDE_NEGATIVE",
+            f"Negative for Programmed DNA Elimination ({n_unique_breaks} breaks < 4 after filtering).",
+        )
+
+    # For 4 <= n_breaks < 100, check Tier-1 Core Motif significance and spatial dispersion
+    if core_metrics:
+        evalue_val = core_metrics.get("evalue")
+        if evalue_val is None:
+            evalue_val = core_metrics.get("evalue_str", 1.0)
+        try:
+            evalue = float(evalue_val)
+        except (ValueError, TypeError):
+            evalue = 1.0
+        rejection_flag = core_metrics.get("rejection_flag", "PASS")
+        try:
+            pos_iqr = float(core_metrics.get("positional_iqr", 100.0))
+        except (ValueError, TypeError):
+            pos_iqr = 100.0
+        is_pass = rejection_flag == "PASS"
+        if is_pass and evalue < 0.01 and pos_iqr <= 60.0 and read_break_iqr < 50.0:
+            return (
+                "CLASS_I_PUNCTATE_MOTIF_PDE",
+                f"Punctate CBM Programmed DNA Elimination with localized cleavage motif ({n_unique_breaks} breaks >= 4, E = {evalue:.2e} < 0.01, positional IQR = {pos_iqr:.1f} bp <= 60 bp).",
+            )
+
+    return (
+        "CLASS_II_ZONAL_CBR_PDE",
+        f"Zonal Chromosomal Breakage Region (CBR) Programmed DNA Elimination ({n_unique_breaks} breaks >= 4 without localized point motif).",
+    )
+
