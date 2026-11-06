@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 _FALLBACK_SSOT = {'aux_evalue_cutoff': 0.05,
+ 'cbm_catalytic_proximity_decay_bp': 75.0,
  'cleavage_mh_protection_radius': 6,
  'core_evalue_cutoff': 0.05,
  'core_grid_models': ['zoops', 'anr', 'oops'],
@@ -17,6 +18,7 @@ _FALLBACK_SSOT = {'aux_evalue_cutoff': 0.05,
  'fimo_core_threshold': 0.0001,
  'itr_min_consecutive_repeats': 4,
  'kmer_size': 31,
+ 'max_anr_site_density_credit': 2.0,
  'max_germ_flank_len': 300,
  'max_soma_flank_len': 300,
  'min_cluster_size_hifi': 1,

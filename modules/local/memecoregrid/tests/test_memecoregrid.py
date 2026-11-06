@@ -25,6 +25,9 @@ if str(LIB_DIR) not in sys.path:
 
 from memegrid.evaluator import (  # noqa: E402
     calculate_consensus_entropy,
+    detect_tandem_repeats,
+    evaluate_meme_motif,
+    is_tandem_repeat_motif,
     parse_meme_txt,
 )
 from memegrid.grid_runner import generate_grid_conditions  # noqa: E402
@@ -400,6 +403,122 @@ s1 + 25 1e-8
                 )
             self.assertIn("Your (primary) dataset must contain at least 2 sequences", str(ctx.exception))
             self.assertIn("P1_test_fail", str(ctx.exception))
+
+    def test_is_tandem_repeat_motif(self):
+        """Verify tandem satellite motifs are rejected while authentic CBMs pass."""
+        import tempfile
+
+        # 0. Direct helper tests for detect_tandem_repeats
+        found, p, mon = detect_tandem_repeats("CTCAGGCTCAGG")
+        self.assertTrue(found)
+        self.assertEqual(p, 6)
+        self.assertEqual(mon, "CTCAGG")
+
+        # 1. Direct function tests for tandem arrays
+        self.assertTrue(is_tandem_repeat_motif("CTCAGGCTCAGG"))
+        self.assertTrue(is_tandem_repeat_motif("CTCAGGCTCAGGCTC"))
+        self.assertTrue(is_tandem_repeat_motif("CAGCAGCAGCAG"))
+        self.assertTrue(is_tandem_repeat_motif("AC" * 15))
+        self.assertTrue(is_tandem_repeat_motif("ATG" * 4))
+
+        # 2. Authentic CBMs must not be flagged as tandem satellite repeats
+        self.assertFalse(is_tandem_repeat_motif("ACATTAGTGCT"))
+        self.assertFalse(is_tandem_repeat_motif("TGTTCA"))
+        self.assertFalse(is_tandem_repeat_motif("TTCTGGTTTAGGCTCAGCCTATGCCATAA"))
+        self.assertFalse(is_tandem_repeat_motif("TTTTTCGCTTAGCC"))
+
+        # 3. MEME parser hard-rejects tandem satellite motifs with composite_score = 0.0
+        row_12 = "\n".join(["  0.8 0.1 0.1 0.0"] * 12)
+        sat_meme = f"""MEME version 4
+MOTIF SATELLITE 1 width = 12 sites = 20 llr = 150 E-value = 1e-50
+letter-probability matrix: alength= 4 w= 12 nsites= 20 E= 1e-50
+{row_12}
+Multilevel CTCAGGCTCAGG
+sites sorted by position p-value
+s1 + 25 1e-8
+s2 + 25 1e-8
+"""
+        with tempfile.NamedTemporaryFile("w", suffix=".txt") as tf_txt:
+            tf_txt.write(sat_meme)
+            tf_txt.flush()
+            met = parse_meme_txt(tf_txt.name, radius=300, total_sequences=2)
+            self.assertEqual(met["composite_score"], 0.0)
+            self.assertEqual(met["rejection_flag"], "REJECTED_TANDEM_SATELLITE")
+
+    def test_proximal_cleavage_pinned_cbm_beats_diffuse_satellite_at_r300(self):
+        """Verify proximal cleavage-pinned CBM (-40 bp, IQR 15 bp) beats diffuse distal satellite at R=300."""
+        import tempfile
+
+        # Proximal cleavage-pinned CBM (e.g. Stevens benchmark -40 bp, tight IQR 15 bp)
+        # Position 0 is at 300, so site at 260 -> offset -40 bp
+        row_11 = "\n".join(["  0.8 0.1 0.05 0.05"] * 11)
+        # 30 sites clustered around index 260 (IQR ~ 15 bp)
+        prox_sites = "\n".join([f"s{i} + {255 + (i % 10)} 1e-5" for i in range(30)])
+        prox_meme = f"""MEME version 4
+MOTIF PROXIMAL_CBM 1 width = 11 sites = 30 llr = 200 E-value = 1e-15
+letter-probability matrix: alength= 4 w= 11 nsites= 30 E= 1e-15
+{row_11}
+Multilevel ACATTAGTGCT
+sites sorted by position p-value
+{prox_sites}
+"""
+
+        # Distal diffuse tandem satellite motif at R=300 (offset -220 bp, diffuse spread)
+        # Position 0 is at 300, so site at 80 -> offset -220 bp
+        row_12 = "\n".join(["  0.85 0.05 0.05 0.05"] * 12)
+        dist_sites = "\n".join([f"s{i % 30} + {50 + (i * 2)} 1e-20" for i in range(120)])
+        dist_meme = f"""MEME version 4
+MOTIF DISTAL_SAT 1 width = 12 sites = 120 llr = 600 E-value = 1e-100
+letter-probability matrix: alength= 4 w= 12 nsites= 120 E= 1e-100
+{row_12}
+Multilevel CTCAGGCTCAGG
+sites sorted by position p-value
+{dist_sites}
+"""
+
+        with tempfile.NamedTemporaryFile("w", suffix=".txt") as f_prox, tempfile.NamedTemporaryFile("w", suffix=".txt") as f_dist:
+            f_prox.write(prox_meme)
+            f_prox.flush()
+            f_dist.write(dist_meme)
+            f_dist.flush()
+
+            res_prox = parse_meme_txt(f_prox.name, radius=300, total_sequences=30)
+            res_dist = parse_meme_txt(f_dist.name, radius=300, total_sequences=30)
+
+            # 1. Distal satellite motif must be rejected
+            self.assertEqual(res_dist["rejection_flag"], "REJECTED_TANDEM_SATELLITE")
+            self.assertEqual(res_dist["composite_score"], 0.0)
+
+            # 2. Proximal CBM passes and scores high
+            self.assertEqual(res_prox["rejection_flag"], "PASS")
+            self.assertGreater(res_prox["composite_score"], 0.5)
+            self.assertGreater(res_prox["composite_score"], res_dist["composite_score"])
+
+        # 3. Direct evaluator scoring verification without tandem rejection:
+        # Verify that catalytic proximity factor and absolute IQR prioritize proximal over distal
+        score_prox = evaluate_meme_motif(
+            consensus="ACATTAGTGCT",
+            width=11,
+            mean_ic=1.8,
+            occupancy=1.0,
+            pos_iqr=15.0,
+            median_offset=-40.0,
+            evalue=1e-15,
+            site_density=1.0,
+        )
+        score_dist_non_sat = evaluate_meme_motif(
+            consensus="ACATTAGTGCT",
+            width=11,
+            mean_ic=1.8,
+            occupancy=1.0,
+            pos_iqr=60.0,
+            median_offset=-220.0,
+            evalue=1e-15,
+            site_density=4.0,  # Hyper-dense ANR
+        )
+        self.assertGreater(score_prox["proximity_factor"], score_dist_non_sat["proximity_factor"])
+        self.assertGreater(score_prox["iqr_penalty"], score_dist_non_sat["iqr_penalty"])
+        self.assertGreater(score_prox["composite_score"], score_dist_non_sat["composite_score"])
 
 
 if __name__ == "__main__":

@@ -160,7 +160,7 @@
 
 | Symbol | Kind | Lines | Signature | Summary |
 | :--- | :--- | :--- | :--- | :--- |
-| `load_ssot_params` | `function` | `L40-L50` | `def load_ssot_params() -> dict` | Load canonical parameters from conf/cbm_params.json if accessible, else synced SSOT. |
+| `load_ssot_params` | `function` | `L42-L52` | `def load_ssot_params() -> dict` | Load canonical parameters from conf/cbm_params.json if accessible, else synced SSOT. |
 
 ### `modules/local/bipartiteprofiler/resources/usr/bin/cbm_bipartite_profiler.py`
 
@@ -216,7 +216,7 @@
 
 | Symbol | Kind | Lines | Signature | Summary |
 | :--- | :--- | :--- | :--- | :--- |
-| `load_ssot_params` | `function` | `L40-L50` | `def load_ssot_params() -> dict` | Load canonical parameters from conf/cbm_params.json if accessible, else synced SSOT. |
+| `load_ssot_params` | `function` | `L42-L52` | `def load_ssot_params() -> dict` | Load canonical parameters from conf/cbm_params.json if accessible, else synced SSOT. |
 
 ### `modules/local/fishtelomericanchors/resources/usr/bin/cbm_fish_telomeric_anchors.py`
 
@@ -230,7 +230,7 @@
 
 | Symbol | Kind | Lines | Signature | Summary |
 | :--- | :--- | :--- | :--- | :--- |
-| `load_ssot_params` | `function` | `L40-L50` | `def load_ssot_params() -> dict` | Load canonical parameters from conf/cbm_params.json if accessible, else synced SSOT. |
+| `load_ssot_params` | `function` | `L42-L52` | `def load_ssot_params() -> dict` | Load canonical parameters from conf/cbm_params.json if accessible, else synced SSOT. |
 
 ### `modules/local/fishtelomericanchors/resources/usr/lib/teloanchor/__init__.py`
 *(No top-level functions or classes defined.)*
@@ -276,7 +276,7 @@
 
 | Symbol | Kind | Lines | Signature | Summary |
 | :--- | :--- | :--- | :--- | :--- |
-| `load_ssot_params` | `function` | `L40-L50` | `def load_ssot_params() -> dict` | Load canonical parameters from conf/cbm_params.json if accessible, else synced SSOT. |
+| `load_ssot_params` | `function` | `L42-L52` | `def load_ssot_params() -> dict` | Load canonical parameters from conf/cbm_params.json if accessible, else synced SSOT. |
 
 ### `modules/local/memecoregrid/resources/usr/lib/memegrid/__init__.py`
 *(No top-level functions or classes defined.)*
@@ -288,7 +288,10 @@
 | `calculate_consensus_entropy` | `function` | `L13-L25` | `def calculate_consensus_entropy(consensus: str) -> float` | Calculate Shannon entropy (in bits) across the characters of a consensus sequence. |
 | `_revcomp` | `function` | `L28-L30` | `def _revcomp(seq: str) -> str` | — |
 | `is_telomeric_repeat_echo` | `function` | `L33-L80` | `def is_telomeric_repeat_echo(consensus: str, repeat: str=SSOT['telomere_repeat']) -> tuple[bool, float]` | Check if motif consensus is a telomeric repeat echo (>=50% exact 6-mers or >=70% in-phase 1-mismatch coverage). |
-| `parse_meme_txt` | `function` | `L83-L241` | `def parse_meme_txt(txt_path: str \| Path, radius: int, total_sequences: int=1, telomere_repeat: str=SSOT['telomere_repeat']) -> dict[str, Any] \| None` | Parse MEME text output and compute comprehensive motif metrics. |
+| `detect_tandem_repeats` | `function` | `L83-L128` | `def detect_tandem_repeats(seq: str, min_period: int=2, max_period: int=10, min_copies: float=2.0, min_identity: float=0.85, target_unit: str \| None=None) -> tuple[bool, int \| None, str \| None]` | Detects tandem periodic repeats via lagged self-comparison. |
+| `is_tandem_repeat_motif` | `function` | `L131-L146` | `def is_tandem_repeat_motif(consensus: str, min_period: int=2, max_period: int=10, min_copies: float=2.0, min_identity: float=0.85) -> bool` | Check whether consensus sequence has tandem repeating periodicity (e.g. 2-10 bp repeats >= 2 copies). |
+| `evaluate_meme_motif` | `function` | `L149-L216` | `def evaluate_meme_motif(consensus: str, width: int, mean_ic: float, occupancy: float, pos_iqr: float, median_offset: float, evalue: float, site_density: float=1.0, telomere_repeat: str=SSOT['telomere_repeat'], proximity_decay_bp: float \| None=None, max_density_credit: float \| None=None) -> dict[str, Any]` | Evaluate motif quality, rejection criteria, and compute composite score. |
+| `parse_meme_txt` | `function` | `L219-L356` | `def parse_meme_txt(txt_path: str \| Path, radius: int, total_sequences: int=1, telomere_repeat: str=SSOT['telomere_repeat']) -> dict[str, Any] \| None` | Parse MEME text output and compute comprehensive motif metrics. |
 
 ### `modules/local/memecoregrid/resources/usr/lib/memegrid/grid_runner.py`
 
