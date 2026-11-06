@@ -34,6 +34,7 @@ from baitgerm.baiter import (  # noqa: E402
 from baitgerm.census import (  # noqa: E402
     deconvolve_and_census,
     deduplicate_break_windows,
+    is_itr_germline_flank,
 )
 from baitgerm.partitioner import partition_baited_read  # noqa: E402
 from baitgerm.reconstructor import (  # noqa: E402
@@ -333,6 +334,92 @@ class TestBaitGermlineJunctions(unittest.TestCase):
             res = subprocess.run(cmd, capture_output=True, text=True)
             self.assertNotEqual(res.returncode, 0)
             self.assertIn("requires paired-end reads", res.stderr)
+
+    def test_is_itr_germline_flank(self):
+        # 1. Verification of rejection when >= 4 repeats are present
+        self.assertTrue(is_itr_germline_flank("TTAGGC" * 4))
+        self.assertTrue(is_itr_germline_flank("TAGGCT" * 4))  # cyclic permutation
+        self.assertTrue(is_itr_germline_flank("AGGCTT" * 5))  # cyclic permutation > 4
+        self.assertTrue(is_itr_germline_flank("GCCTAA" * 4))  # reverse complement
+        self.assertTrue(is_itr_germline_flank("CCTAAG" * 4))  # cyclic RC
+        self.assertTrue(
+            is_itr_germline_flank("ACGTACGT" * 5 + "TTAGGC" * 4 + "TGCATGCA" * 5)
+        )
+
+        # 2. Verification of acceptance (not an ITR) when < 4 repeats are present
+        self.assertFalse(is_itr_germline_flank("TTAGGC" * 3))
+        self.assertFalse(is_itr_germline_flank("TTAGGC" * 2))
+        self.assertFalse(is_itr_germline_flank("TTAGGC"))
+        self.assertFalse(is_itr_germline_flank("ACGT" * 20))
+        self.assertFalse(is_itr_germline_flank("AAAAAA" * 4))
+        self.assertFalse(is_itr_germline_flank(""))
+
+    def test_itr_classification_in_census(self):
+        # Locus with >= 4 telomeric repeats in germline continuation must be classified as INTERSTITIAL_TELOMERIC_REPEAT
+        itr_locus = {
+            "anchor_id": "a_itr",
+            "c_telo": 25,
+            "c_germ": 25,
+            "coherence": 0.99,
+            "germline_consensus": "TTAGGC" * 5,
+            "break_window": "ACGT" * 30 + "TTAGGC" * 5,
+        }
+        break_locus = {
+            "anchor_id": "a_break",
+            "c_telo": 25,
+            "c_germ": 25,
+            "coherence": 0.99,
+            "germline_consensus": "ACGTACGT" * 15,
+            "break_window": "ACGT" * 30 + "ACGTACGT" * 15,
+        }
+        classified, census = deconvolve_and_census([itr_locus, break_locus])
+        class_map = {l["anchor_id"]: l["classification"] for l in classified}
+        self.assertEqual(class_map["a_itr"], "INTERSTITIAL_TELOMERIC_REPEAT")
+        self.assertEqual(class_map["a_break"], "PDE_BREAK_SITE")
+        self.assertEqual(census["n_breaks"], 1)
+
+    def test_adaptive_germ_cutoff_demotes_low_depth_artifacts(self):
+        # Candidate break sites establish median germline coverage C_germ = 79
+        # germ_cutoff = max(3, round(0.15 * 79)) = 12
+        # A terminal artifact with c_germ = 3 must be demoted to GERMLINE_NATIVE_TELOMERE
+        loci = [
+            {
+                "anchor_id": "a_break1",
+                "c_telo": 30,
+                "c_germ": 79,
+                "coherence": 0.98,
+                "break_window": "ACGT" * 75,
+            },
+            {
+                "anchor_id": "a_break2",
+                "c_telo": 35,
+                "c_germ": 79,
+                "coherence": 0.98,
+                "break_window": "TGCA" * 75,
+            },
+            {
+                "anchor_id": "a_terminal_artifact",
+                "c_telo": 30,
+                "c_germ": 3,
+                "coherence": 0.95,
+                "break_window": "GGCC" * 75,
+            },
+            {
+                "anchor_id": "a_true_pde",
+                "c_telo": 30,
+                "c_germ": 15,
+                "coherence": 0.98,
+                "break_window": "CGTA" * 75,
+            },
+        ]
+        classified, census = deconvolve_and_census(loci)
+        class_map = {l["anchor_id"]: l["classification"] for l in classified}
+        self.assertEqual(class_map["a_break1"], "PDE_BREAK_SITE")
+        self.assertEqual(class_map["a_break2"], "PDE_BREAK_SITE")
+        self.assertEqual(class_map["a_true_pde"], "PDE_BREAK_SITE")
+        self.assertEqual(class_map["a_terminal_artifact"], "GERMLINE_NATIVE_TELOMERE")
+        self.assertEqual(census["median_c_germ"], 79.0)
+        self.assertEqual(census["n_breaks"], 3)
 
 
 if __name__ == "__main__":
