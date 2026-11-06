@@ -35,9 +35,23 @@ output:
       - "*.pass1_summary.json":
           type: file
           description: JSON file summarizing telomeric fishing statistics
-  - versions:
-      - versions.yml:
+  - telomeric_reads_fastq:
+      - meta:
+          type: map
+          description: Groovy Map containing sample information
+      - "*.pass1_telomeric_reads.fastq.gz":
           type: file
-          description: File containing software versions
+          description: Gzipped FASTQ capsule of raw reads containing terminal or interstitial telomeric repeats
+          pattern: "*.pass1_telomeric_reads.fastq.gz"
+  - versions_python:
+      - "${task.process}":
+          type: string
+          description: Process name
+      - python:
+          type: string
+          description: Tool name
+      - "eval(...)":
+          type: string
+          description: Tool version
 authors:
   - "@pgonzale60"
