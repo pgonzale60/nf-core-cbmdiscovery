@@ -55,6 +55,64 @@ def is_tandem_satellite_window(
     return False
 
 
+def detect_tandem_repeats(
+    seq: str,
+    min_period: int = 2,
+    max_period: int = 10,
+    min_copies: float = 2.0,
+    min_identity: float = 0.85,
+    target_unit: str | None = None,
+) -> tuple[bool, int | None, str | None]:
+    """Detects tandem periodic repeats via lagged self-comparison.
+
+    If target_unit is provided, restricts to that monomer's period and cyclic permutations.
+    """
+    if not seq:
+        return False, None, None
+    s = seq.upper()
+    n = len(s)
+
+    if target_unit:
+        tu = target_unit.upper()
+        p = len(tu)
+        rc_tu = tu.translate(str.maketrans("ACGTN", "TGCAN"))[::-1]
+        valid_cyclic_kmers = {(tu * 2)[i : i + p] for i in range(p)} | {
+            (rc_tu * 2)[i : i + p] for i in range(p)
+        }
+        periods = [p]
+    else:
+        valid_cyclic_kmers = None
+        periods = range(min_period, min(max_period, n // int(min_copies)) + 1)
+
+    for p in periods:
+        lag_len = int((min_copies - 1) * p)
+        if n < p + lag_len:
+            continue
+        for i in range(n - p - lag_len + 1):
+            s1 = s[i : i + lag_len]
+            s2 = s[i + p : i + p + lag_len]
+            matches = sum(1 for a, b in zip(s1, s2, strict=False) if a == b)
+            if matches / lag_len >= min_identity:
+                monomer = s[i : i + p]
+                if valid_cyclic_kmers and monomer not in valid_cyclic_kmers:
+                    continue
+                return True, p, monomer
+
+    return False, None, None
+
+
+def is_itr_germline_flank(
+    seq: str,
+    telomere_repeat: str = SSOT["telomere_repeat"],
+    min_repeats: int = SSOT.get("itr_min_consecutive_repeats", 4),
+) -> bool:
+    """Check whether reconstructed germline_consensus / flank contains >= min_repeats copies of telomeric repeat or reverse complement."""
+    found, _, _ = detect_tandem_repeats(
+        seq, min_copies=min_repeats, min_identity=0.85, target_unit=telomere_repeat
+    )
+    return found
+
+
 def _vsearch_cluster_pass(
     loci: list[dict[str, Any]],
     seq_getter,
@@ -197,11 +255,15 @@ def deconvolve_and_census(
         loc.setdefault("collapsed_copies", 1)
         w = loc.get("break_window") or loc.get("anchor_seq", "")
         loc["_is_satellite"] = is_tandem_satellite_window(w)
+        loc["_is_itr"] = is_itr_germline_flank(
+            loc.get("germline_consensus", "")
+        ) or is_itr_germline_flank(loc.get("break_window", ""))
         c_germ = loc.get("c_germ", 0)
         coherence = loc.get("coherence", 0.0)
         c_telo = loc.get("c_telo", 0)
         if (
             not loc["_is_satellite"]
+            and not loc["_is_itr"]
             and c_telo >= min_telo_reads
             and c_germ >= min_germ_reads
             and coherence >= 0.65
@@ -225,11 +287,19 @@ def deconvolve_and_census(
         else min_telo_reads
     )
 
+    # Adaptive germline threshold scaled with median germline coverage
+    germ_cutoff = (
+        max(min_germ_reads, round(0.15 * med_c_germ))
+        if med_c_germ > 0
+        else min_germ_reads
+    )
+
     for loc in loci:
         c_germ = loc.get("c_germ", 0)
         coherence = loc.get("coherence", 0.0)
         c_telo = loc.get("c_telo", 0)
         is_sat = loc.pop("_is_satellite", False)
+        is_itr = loc.pop("_is_itr", False)
 
         # High-copy repeat / rDNA capped native telomere filter:
         # Repetitive arrays terminating at germline telomeres exhibit massive c_germ (c_germ >> med_c_germ and c_germ >> c_telo)
@@ -241,14 +311,22 @@ def deconvolve_and_census(
         )
 
         is_pde = False
-        if not is_sat and not is_high_copy and c_telo >= telo_cutoff and c_germ >= min_germ_reads:
+        if (
+            not is_sat
+            and not is_itr
+            and not is_high_copy
+            and c_telo >= telo_cutoff
+            and c_germ >= germ_cutoff
+        ):
             if coherence >= min_coherence:
                 is_pde = True
-            elif c_germ >= min(5, min_germ_reads) and coherence >= 0.65:
+            elif c_germ >= min(5, germ_cutoff) and coherence >= 0.65:
                 is_pde = True
 
         if is_sat:
             loc["classification"] = "TANDEM_SATELLITE_ARRAY"
+        elif is_itr:
+            loc["classification"] = "INTERSTITIAL_TELOMERIC_REPEAT"
         elif is_pde:
             loc["classification"] = "PDE_BREAK_SITE"
         elif is_high_copy:
@@ -283,6 +361,7 @@ def deconvolve_and_census(
             "PDE_BREAK_SITE",
             "GERMLINE_NATIVE_TELOMERE",
             "TANDEM_SATELLITE_ARRAY",
+            "INTERSTITIAL_TELOMERIC_REPEAT",
         ):
             continue
         c_telo = loc.get("c_telo", 0)
@@ -290,7 +369,7 @@ def deconvolve_and_census(
 
         if c_telo < telo_cutoff and c_germ >= min_germ_reads:
             loc["classification"] = "UNBROKEN_GERMLINE_LOCUS"
-        elif c_germ >= min_germ_reads:
+        elif c_germ >= germ_cutoff:
             loc["classification"] = "LOW_COHERENCE_JUNCTION"
         elif c_telo <= cutoff:
             loc["classification"] = "GERMLINE_NATIVE_TELOMERE"
