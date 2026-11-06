@@ -29,7 +29,7 @@ process FISHTELOMERICANCHORS {
     def r2 = is_single ? "" : "${reads[1]}"
 
     """
-    # Tool: cbm_fish_telomeric_anchors.py | Script-SHA: aa6f0b281e18c91b
+    # Tool: cbm_fish_telomeric_anchors.py | Script-SHA: 4be124cd2d4c34a3
 
     # 1. Fishing telomeric reads using bbduk.sh
     REPEAT_3X="${telomere_repeat}${telomere_repeat}${telomere_repeat}"

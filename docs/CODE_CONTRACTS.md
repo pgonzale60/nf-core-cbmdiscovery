@@ -129,10 +129,12 @@
 | :--- | :--- | :--- | :--- | :--- |
 | `_is_short_microsatellite` | `function` | `L12-L21` | `def _is_short_microsatellite(sub: str) -> bool` | Return True if sequence is dominated by a short period 1..9 bp microsatellite. |
 | `is_tandem_satellite_window` | `function` | `L24-L55` | `def is_tandem_satellite_window(seq: str, min_period: int=SSOT['satellite_min_period'], max_period: int=SSOT['satellite_max_period'], min_copies: int=SSOT['satellite_min_copies']) -> bool` | Detect if a window contains a tandem satellite array of monomer length 10..100 bp repeating >= 3 times. |
-| `_vsearch_cluster_pass` | `function` | `L58-L136` | `def _vsearch_cluster_pass(loci: list[dict[str, Any]], seq_getter, min_identity: float, threads: int, vsearch_bin: str) -> list[dict[str, Any]]` | Run one pass of vsearch --cluster_fast using sequences from seq_getter. |
-| `_extract_distal_soma_flank` | `function` | `L139-L144` | `def _extract_distal_soma_flank(loc: dict[str, Any]) -> str` | Extract retained somatic flank excluding the immediate proximal CBM zone. |
-| `deduplicate_break_windows` | `function` | `L147-L181` | `def deduplicate_break_windows(loci: list[dict[str, Any]], min_identity: float=SSOT['stage3_min_identity'], threads: int=1) -> list[dict[str, Any]]` | Collapse break windows sharing >= min_identity across full window OR retained somatic flank. |
-| `deconvolve_and_census` | `function` | `L184-L322` | `def deconvolve_and_census(loci: list[dict[str, Any]], min_germ_reads: int=SSOT['min_germ_reads'], min_coherence: float=SSOT['min_coherence'], min_telo_reads: int=SSOT['min_telo_reads']) -> tuple[list[dict[str, Any]], dict[str, Any]]` | Classify anchors into PDE_BREAK_SITE, GERMLINE_NATIVE_TELOMERE, SHARED_NATIVE_TELOMERE, |
+| `detect_tandem_repeats` | `function` | `L58-L101` | `def detect_tandem_repeats(seq: str, min_period: int=2, max_period: int=10, min_copies: float=2.0, min_identity: float=0.85, target_unit: str \| None=None) -> tuple[bool, int \| None, str \| None]` | Detects tandem periodic repeats via lagged self-comparison. |
+| `is_itr_germline_flank` | `function` | `L104-L113` | `def is_itr_germline_flank(seq: str, telomere_repeat: str=SSOT['telomere_repeat'], min_repeats: int=SSOT.get('itr_min_consecutive_repeats', 4)) -> bool` | Check whether reconstructed germline_consensus / flank contains >= min_repeats copies of telomeric repeat or reverse complement. |
+| `_vsearch_cluster_pass` | `function` | `L116-L194` | `def _vsearch_cluster_pass(loci: list[dict[str, Any]], seq_getter, min_identity: float, threads: int, vsearch_bin: str) -> list[dict[str, Any]]` | Run one pass of vsearch --cluster_fast using sequences from seq_getter. |
+| `_extract_distal_soma_flank` | `function` | `L197-L202` | `def _extract_distal_soma_flank(loc: dict[str, Any]) -> str` | Extract retained somatic flank excluding the immediate proximal CBM zone. |
+| `deduplicate_break_windows` | `function` | `L205-L239` | `def deduplicate_break_windows(loci: list[dict[str, Any]], min_identity: float=SSOT['stage3_min_identity'], threads: int=1) -> list[dict[str, Any]]` | Collapse break windows sharing >= min_identity across full window OR retained somatic flank. |
+| `deconvolve_and_census` | `function` | `L242-L401` | `def deconvolve_and_census(loci: list[dict[str, Any]], min_germ_reads: int=SSOT['min_germ_reads'], min_coherence: float=SSOT['min_coherence'], min_telo_reads: int=SSOT['min_telo_reads']) -> tuple[list[dict[str, Any]], dict[str, Any]]` | Classify anchors into PDE_BREAK_SITE, GERMLINE_NATIVE_TELOMERE, SHARED_NATIVE_TELOMERE, |
 
 ### `modules/local/baitgermlinejunctions/resources/usr/lib/baitgerm/partitioner.py`
 
@@ -158,7 +160,7 @@
 
 | Symbol | Kind | Lines | Signature | Summary |
 | :--- | :--- | :--- | :--- | :--- |
-| `load_ssot_params` | `function` | `L39-L49` | `def load_ssot_params() -> dict` | Load canonical parameters from conf/cbm_params.json if accessible, else synced SSOT. |
+| `load_ssot_params` | `function` | `L40-L50` | `def load_ssot_params() -> dict` | Load canonical parameters from conf/cbm_params.json if accessible, else synced SSOT. |
 
 ### `modules/local/bipartiteprofiler/resources/usr/bin/cbm_bipartite_profiler.py`
 
@@ -214,7 +216,7 @@
 
 | Symbol | Kind | Lines | Signature | Summary |
 | :--- | :--- | :--- | :--- | :--- |
-| `load_ssot_params` | `function` | `L39-L49` | `def load_ssot_params() -> dict` | Load canonical parameters from conf/cbm_params.json if accessible, else synced SSOT. |
+| `load_ssot_params` | `function` | `L40-L50` | `def load_ssot_params() -> dict` | Load canonical parameters from conf/cbm_params.json if accessible, else synced SSOT. |
 
 ### `modules/local/fishtelomericanchors/resources/usr/bin/cbm_fish_telomeric_anchors.py`
 
@@ -228,7 +230,7 @@
 
 | Symbol | Kind | Lines | Signature | Summary |
 | :--- | :--- | :--- | :--- | :--- |
-| `load_ssot_params` | `function` | `L39-L49` | `def load_ssot_params() -> dict` | Load canonical parameters from conf/cbm_params.json if accessible, else synced SSOT. |
+| `load_ssot_params` | `function` | `L40-L50` | `def load_ssot_params() -> dict` | Load canonical parameters from conf/cbm_params.json if accessible, else synced SSOT. |
 
 ### `modules/local/fishtelomericanchors/resources/usr/lib/teloanchor/__init__.py`
 *(No top-level functions or classes defined.)*
@@ -274,7 +276,7 @@
 
 | Symbol | Kind | Lines | Signature | Summary |
 | :--- | :--- | :--- | :--- | :--- |
-| `load_ssot_params` | `function` | `L39-L49` | `def load_ssot_params() -> dict` | Load canonical parameters from conf/cbm_params.json if accessible, else synced SSOT. |
+| `load_ssot_params` | `function` | `L40-L50` | `def load_ssot_params() -> dict` | Load canonical parameters from conf/cbm_params.json if accessible, else synced SSOT. |
 
 ### `modules/local/memecoregrid/resources/usr/lib/memegrid/__init__.py`
 *(No top-level functions or classes defined.)*

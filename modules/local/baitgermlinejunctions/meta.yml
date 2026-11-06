@@ -29,7 +29,7 @@ input:
         description: "K-mer bait size (default: 31)"
   - - min_germ_reads:
         type: integer
-        description: "Minimum germline read-through reads (default: 2)"
+        description: "Minimum germline read-through reads (default: 3)"
   - - min_telo_reads:
         type: integer
         description: "Minimum telomeric reads supporting somatic branch (default: 5)"
