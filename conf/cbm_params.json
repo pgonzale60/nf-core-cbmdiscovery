@@ -30,5 +30,7 @@
     "satellite_min_period": 10,
     "satellite_max_period": 100,
     "satellite_min_copies": 3,
-    "satellite_min_identity": 0.82
+    "satellite_min_identity": 0.82,
+    "cbm_catalytic_proximity_decay_bp": 75.0,
+    "max_anr_site_density_credit": 2.0
 }
