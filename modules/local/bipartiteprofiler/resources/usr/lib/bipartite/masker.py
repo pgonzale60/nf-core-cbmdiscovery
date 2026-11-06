@@ -30,6 +30,8 @@ def load_soma_len_map(
             if line.startswith(">"):
                 if cur_id is not None:
                     m = re.search(r"\bsoma_len=(\d+)", cur_hdr)
+                    if not m:
+                        m = re.search(r"_p0_(\d+)", cur_hdr)
                     soma_map[cur_id] = (
                         int(m.group(1))
                         if m
@@ -46,6 +48,8 @@ def load_soma_len_map(
                 cur_len += len(line)
         if cur_id is not None:
             m = re.search(r"\bsoma_len=(\d+)", cur_hdr)
+            if not m:
+                m = re.search(r"_p0_(\d+)", cur_hdr)
             soma_map[cur_id] = (
                 int(m.group(1))
                 if m
@@ -56,6 +60,51 @@ def load_soma_len_map(
                 )
             )
     return soma_map
+
+
+def slice_window_at_radius(
+    seq: str,
+    radius: int,
+    pos0: int,
+) -> tuple[str, int]:
+    """Slice sequence to [-radius .. +radius] around pos0.
+
+    Returns:
+        (sliced_seq, new_pos0)
+    """
+    s = seq.upper()
+    n = len(s)
+    if n <= 2 * radius + 10:
+        return s, pos0
+
+    soma_start = max(0, pos0 - radius)
+    germ_end = min(n, pos0 + radius)
+    sliced = s[soma_start:germ_end]
+    new_pos0 = pos0 - soma_start
+    return sliced, new_pos0
+
+
+def write_sliced_fasta(
+    raw_seqs: dict[str, str],
+    soma_lens: dict[str, int],
+    radius: int,
+    output_fasta: str | Path,
+) -> tuple[dict[str, str], dict[str, int]]:
+    """Slice sequences to radius and write FASTA with embedded soma_len."""
+    out_path = Path(output_fasta)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    sliced_seqs = {}
+    new_soma_lens = {}
+
+    with open(out_path, "w", encoding="utf-8") as f:
+        for name, seq in raw_seqs.items():
+            pos0 = soma_lens.get(name, len(seq) // 2)
+            sliced, new_pos0 = slice_window_at_radius(seq, radius, pos0)
+            sliced_seqs[name] = sliced
+            new_soma_lens[name] = new_pos0
+            f.write(f">{name} soma_len={new_pos0}\n{sliced}\n")
+
+    return sliced_seqs, new_soma_lens
 
 
 def load_fasta_dict(fasta_path: str | Path) -> dict[str, str]:

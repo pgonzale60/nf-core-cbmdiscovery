@@ -193,12 +193,12 @@ def verify_live_code_contracts(tsv_contracts: dict) -> None:
         / "bipartite"
         / "spacing.py"
     )
-    bp_cols = extract_fieldnames_from_lines(bp_path, start_line=200, end_line=225)
+    bp_cols = extract_fieldnames_from_lines(bp_path, start_line=200, end_line=440)
     expected_bp = contracts["bipartite_spacing_summary.tsv"]["columns"]
     assert bp_cols == expected_bp, (
         f"Schema drift in {bp_path}: code fieldnames {bp_cols} != contract columns {expected_bp}"
     )
-    print("✓ BIPARTITEPROFILER (bipartite_spacing_summary.tsv) columns match live code (lines 200-225).")
+    print("✓ BIPARTITEPROFILER (bipartite_spacing_summary.tsv) columns match live code.")
 
 
 def verify_module_stub_contracts(tsv_contracts: dict, census_schema: dict) -> None:

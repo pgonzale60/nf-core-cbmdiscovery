@@ -54,7 +54,27 @@ def generate_cbm_discovery_report(
 
     md.extend(["\n---\n", "## 3. Tier-2 Auxiliary & Bipartite Architecture\n"])
 
-    if best_aux_motif:
+    if bipartite_summary.get("architecture") == "HOMOTYPIC_BIPARTITE" or (
+        best_aux_motif and best_aux_motif.get("architecture") == "HOMOTYPIC_BIPARTITE"
+    ):
+        md.extend([
+            "### Homotypic Bipartite Architecture Detected\n",
+            "- **Architecture Type**: `HOMOTYPIC_BIPARTITE`\n",
+            f"- **Primary Core Consensus**: `{core_metrics.get('consensus', 'N/A')}`",
+            "- **Partner Type**: Dual core motif instances (Core–Core pairing)",
+            "\n### Bipartite Spacing & Orientation Metrics\n",
+            f"- **Paired Core-Core Loci**: `{bipartite_summary.get('n_paired_occurrences', 0)}`",
+            f"- **Median Edge-to-Edge Spacer**: `{bipartite_summary.get('median_spacer_bp', 0)} bp` (IQR: `{bipartite_summary.get('iqr_spacer_bp', 0)} bp`)",
+            f"- **Embedded Occurrences (0 bp)**: `{bipartite_summary.get('pct_embedded_0bp', 0)}%`",
+            f"- **Tightly Spaced (≤ 30 bp)**: `{bipartite_summary.get('pct_spacer_le30bp', 0)}%`",
+            f"- **Flanking (≤ 50 bp)**: `{bipartite_summary.get('pct_spacer_le50bp', 0)}%`",
+            f"- **Strand Concordance (Same Strand)**: `{bipartite_summary.get('pct_same_strand', 0)}%`",
+            f"- **Located in Retained Region (≤ Pos 0)**: `{bipartite_summary.get('pct_retained_domain', 0.0)}%`",
+            f"- **Located in Eliminated Region (> Pos 0)**: `{bipartite_summary.get('pct_eliminated_domain', 0.0)}%`",
+        ])
+        if bipartite_summary.get("pct_spanning_domain", 0.0) > 0:
+            md.append(f"- **Spanning Cleavage Junction**: `{bipartite_summary.get('pct_spanning_domain')}%`")
+    elif best_aux_motif:
         md.extend([
             "### Tier-2 Auxiliary Motif Detected\n",
             f"- **Auxiliary Consensus**: `{best_aux_motif.get('consensus', 'N/A')}`",
