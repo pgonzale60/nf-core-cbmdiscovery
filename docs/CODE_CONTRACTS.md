@@ -78,7 +78,7 @@
 - **Title:** CBM Coverage and Chromosome Census Schema
 - **Description:** Formal JSON Schema (Draft 2020-12) for coverage_and_chromosome_census.json produced by BAITGERMLINEJUNCTIONS (baitgerm/census.py:deconvolve_and_census).
 - **Producer:** `BAITGERMLINEJUNCTIONS` (`cbm_bait_germline_junctions.py` -> `coverage_and_chromosome_census.json`)
-- **Required Top-Level Keys:** `median_c_soma`, `median_c_germ`, `germline_fraction`, `n_breaks`, `n_germ_telo`, `estimated_germline_chromosomes`, `n_shared_telo`, `n_satellite_excluded`
+- **Required Top-Level Keys:** `median_c_soma`, `median_c_germ`, `germline_fraction`, `n_breaks`, `n_germ_telo`, `estimated_germline_chromosomes`, `n_shared_telo`, `n_satellite_excluded`, `n_itr_excluded`
 
 | Property | Type | Description |
 | :--- | :--- | :--- |
@@ -88,6 +88,7 @@
 | `median_c_soma` | `number` | Median somatic coverage across candidate break sites |
 | `n_breaks` | `integer` | Number of PDE break sites identified |
 | `n_germ_telo` | `integer` | Number of germline native telomeres |
+| `n_itr_excluded` | `integer` | Number of candidate loci excluded as interstitial telomeric repeats (ITRs) |
 | `n_satellite_excluded` | `integer` | Number of loci classified as tandem satellite arrays |
 | `n_shared_telo` | `integer` | Number of shared native telomeres |
 
@@ -97,7 +98,7 @@
 | :--- | :--- | :--- | :--- | :--- |
 | `bipartite_spacing_summary.tsv` | `BIPARTITEPROFILER` | `CBMDISCOVERY` | `sequence_name`, `core_start`, `core_stop`, `core_strand`, `core_offset_to_pos0`, `has_partner`, `partner_type`, `partner_domain`, `partner_start`, `partner_stop`, `partner_strand`, `partner_offset_to_pos0`, `spacer_bp`, `spacer_type`, `relative_strand` | — |
 | `core_grid_summary.tsv` | `MEMECOREGRID` | `CBMDISCOVERY` | `phase`, `condition_id`, `radius`, `markov_order`, `mod`, `revcomp`, `pal`, `w_label`, `width`, `nsites`, `evalue`, `consensus`, `total_ic`, `mean_ic`, `consensus_entropy`, `occupancy`, `median_offset_to_pos0`, `positional_iqr`, `telomeric_echo_fraction`, `rejection_flag`, `composite_score` | — |
-| `junction_catalog.tsv` | `BAITGERMLINEJUNCTIONS` | `CBMDISCOVERY` | `anchor_id`, `classification`, `c_telo`, `c_germ`, `coherence`, `microhomology_len`, `microhomology_motif`, `soma_flank_len`, `germ_flank_len`, `collapsed_copies` | `PDE_BREAK_SITE`, `GERMLINE_NATIVE_TELOMERE`, `SHARED_NATIVE_TELOMERE`, `TANDEM_SATELLITE_ARRAY`, `UNBROKEN_GERMLINE_LOCUS`, `LOW_COHERENCE_JUNCTION`, `CANDIDATE_TELOMERE` |
+| `junction_catalog.tsv` | `BAITGERMLINEJUNCTIONS` | `CBMDISCOVERY` | `anchor_id`, `classification`, `c_telo`, `c_germ`, `coherence`, `microhomology_len`, `microhomology_motif`, `soma_flank_len`, `germ_flank_len`, `collapsed_copies` | `PDE_BREAK_SITE`, `GERMLINE_NATIVE_TELOMERE`, `SHARED_NATIVE_TELOMERE`, `TANDEM_SATELLITE_ARRAY`, `INTERSTITIAL_TELOMERIC_REPEAT`, `UNBROKEN_GERMLINE_LOCUS`, `LOW_COHERENCE_JUNCTION`, `CANDIDATE_TELOMERE` |
 
 ## 3. Python Module AST Symbol Table
 
@@ -134,7 +135,7 @@
 | `_vsearch_cluster_pass` | `function` | `L116-L194` | `def _vsearch_cluster_pass(loci: list[dict[str, Any]], seq_getter, min_identity: float, threads: int, vsearch_bin: str) -> list[dict[str, Any]]` | Run one pass of vsearch --cluster_fast using sequences from seq_getter. |
 | `_extract_distal_soma_flank` | `function` | `L197-L202` | `def _extract_distal_soma_flank(loc: dict[str, Any]) -> str` | Extract retained somatic flank excluding the immediate proximal CBM zone. |
 | `deduplicate_break_windows` | `function` | `L205-L239` | `def deduplicate_break_windows(loci: list[dict[str, Any]], min_identity: float=SSOT['stage3_min_identity'], threads: int=1) -> list[dict[str, Any]]` | Collapse break windows sharing >= min_identity across full window OR retained somatic flank. |
-| `deconvolve_and_census` | `function` | `L242-L401` | `def deconvolve_and_census(loci: list[dict[str, Any]], min_germ_reads: int=SSOT['min_germ_reads'], min_coherence: float=SSOT['min_coherence'], min_telo_reads: int=SSOT['min_telo_reads']) -> tuple[list[dict[str, Any]], dict[str, Any]]` | Classify anchors into PDE_BREAK_SITE, GERMLINE_NATIVE_TELOMERE, SHARED_NATIVE_TELOMERE, |
+| `deconvolve_and_census` | `function` | `L242-L405` | `def deconvolve_and_census(loci: list[dict[str, Any]], min_germ_reads: int=SSOT['min_germ_reads'], min_coherence: float=SSOT['min_coherence'], min_telo_reads: int=SSOT['min_telo_reads']) -> tuple[list[dict[str, Any]], dict[str, Any]]` | Classify anchors into PDE_BREAK_SITE, GERMLINE_NATIVE_TELOMERE, SHARED_NATIVE_TELOMERE, |
 
 ### `modules/local/baitgermlinejunctions/resources/usr/lib/baitgerm/partitioner.py`
 

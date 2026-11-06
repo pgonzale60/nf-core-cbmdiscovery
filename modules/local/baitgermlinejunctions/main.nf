@@ -33,7 +33,7 @@ process BAITGERMLINEJUNCTIONS {
     def r2 = is_single ? "" : "${reads[1]}"
 
     """
-    # Tool: cbm_bait_germline_junctions.py | Script-SHA: e70a0a97f6bd1bd3
+    # Tool: cbm_bait_germline_junctions.py | Script-SHA: ba8ffbdd587089bd
 
     # 1. Extract terminal 60 bp of candidate anchors into bait FASTA
     python3 -c "
@@ -128,6 +128,6 @@ with open('${candidate_anchors}') as f_in, open('anchors_terminal_60bp.fasta', '
     touch "${prefix}.break_windows_300bp.fasta"
     echo -e "anchor_id\\tclassification\\tc_telo\\tc_germ\\tcoherence\\tmicrohomology_len\\tmicrohomology_motif\\tsoma_flank_len\\tgerm_flank_len\\tcollapsed_copies" > "${prefix}.junction_catalog.tsv"
     touch "${prefix}.pass2_baited_reads.fastq.gz"
-    echo '{"median_c_soma": 0.0, "median_c_germ": 0.0, "germline_fraction": 0.0, "n_breaks": 0, "n_germ_telo": 0, "estimated_germline_chromosomes": 0.0, "n_shared_telo": 0, "n_satellite_excluded": 0}' > "${prefix}.coverage_and_chromosome_census.json"
+    echo '{"median_c_soma": 0.0, "median_c_germ": 0.0, "germline_fraction": 0.0, "n_breaks": 0, "n_germ_telo": 0, "estimated_germline_chromosomes": 0.0, "n_shared_telo": 0, "n_satellite_excluded": 0, "n_itr_excluded": 0}' > "${prefix}.coverage_and_chromosome_census.json"
     """
 }
