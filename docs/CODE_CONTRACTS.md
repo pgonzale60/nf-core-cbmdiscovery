@@ -19,7 +19,7 @@
   - `validateParameters, paramsHelp, paramsSummaryLog, samplesheetToList` from `plugin/nf-schema`
 - **Workflow `NFCORE_CBMDISCOVERY`:**
   - `take:` `samplesheet`
-  - `emit:` `candidate_anchors`, `break_windows`, `junction_catalog`, `census_json`, `best_core_motif`, `bipartite_spacing`, `discovery_report`, `multiqc_report`, `versions`
+  - `emit:` `candidate_anchors`, `telomeric_reads_fastq`, `anchor_summary_json`, `break_windows`, `junction_catalog`, `census_json`, `baited_reads_fastq`, `best_core_motif`, `grid_summary_tsv`, `motif_metrics_json`, `best_background`, `bipartite_spacing`, `best_auxiliary_motif`, `masked_fasta`, `discovery_report`, `multiqc_report`, `versions`
 - **Workflow `<entry>`:**
   - `take:` *(none)*
   - `emit:` *(none)*
@@ -38,8 +38,8 @@
   - `softwareVersionsToYAML` from `../subworkflows/nf-core/utils_nfcore_pipeline`
   - `methodsDescriptionText` from `../subworkflows/local/utils_nfcore_cbmdiscovery_pipeline`
 - **Workflow `CBMDISCOVERY`:**
-  - `take:` *(none)*
-  - `emit:` *(none)*
+  - `take:` `ch_samplesheet`, `multiqc_config`, `multiqc_logo`, `multiqc_methods_description`, `outdir`
+  - `emit:` `candidate_anchors`, `telomeric_reads_fastq`, `anchor_summary_json`, `break_windows`, `break_windows_fasta`, `junction_catalog`, `census_json`, `baited_reads_fastq`, `best_core_motif`, `grid_summary_tsv`, `motif_metrics_json`, `best_background`, `bipartite_spacing`, `bipartite_spacing_tsv`, `best_auxiliary_motif`, `masked_fasta`, `discovery_report`, `discovery_report_md`, `multiqc_report`, `versions`
 
 ### 1.2 Local Subworkflows (`subworkflows/local/*/main.nf`)
 
@@ -54,10 +54,10 @@
   - `UTILS_NFCORE_PIPELINE` from `../../nf-core/utils_nfcore_pipeline`
   - `UTILS_NEXTFLOW_PIPELINE` from `../../nf-core/utils_nextflow_pipeline`
 - **Workflow `PIPELINE_INITIALISATION`:**
-  - `take:` *(none)*
-  - `emit:` *(none)*
+  - `take:` `version`, `validate_params`, `monochrome_logs`, `nextflow_cli_args`, `outdir`, `input`, `help`, `help_full`, `show_hidden`
+  - `emit:` `samplesheet`, `versions`
 - **Workflow `PIPELINE_COMPLETION`:**
-  - `take:` *(none)*
+  - `take:` `email`, `email_on_fail`, `plaintext_email`, `outdir`, `monochrome_logs`, `multiqc_report`
   - `emit:` *(none)*
 
 ### 1.3 Local Modules (`modules/local/**/main.nf`)

@@ -49,15 +49,23 @@ workflow NFCORE_CBMDISCOVERY {
     )
 
     emit:
-    candidate_anchors = CBMDISCOVERY.out.candidate_anchors
-    break_windows     = CBMDISCOVERY.out.break_windows
-    junction_catalog  = CBMDISCOVERY.out.junction_catalog
-    census_json       = CBMDISCOVERY.out.census_json
-    best_core_motif   = CBMDISCOVERY.out.best_core_motif
-    bipartite_spacing = CBMDISCOVERY.out.bipartite_spacing
-    discovery_report  = CBMDISCOVERY.out.discovery_report
-    multiqc_report    = CBMDISCOVERY.out.multiqc_report // channel: /path/to/multiqc_report.html
-    versions          = CBMDISCOVERY.out.versions
+    candidate_anchors     = CBMDISCOVERY.out.candidate_anchors
+    telomeric_reads_fastq = CBMDISCOVERY.out.telomeric_reads_fastq
+    anchor_summary_json   = CBMDISCOVERY.out.anchor_summary_json
+    break_windows         = CBMDISCOVERY.out.break_windows
+    junction_catalog      = CBMDISCOVERY.out.junction_catalog
+    census_json           = CBMDISCOVERY.out.census_json
+    baited_reads_fastq    = CBMDISCOVERY.out.baited_reads_fastq
+    best_core_motif       = CBMDISCOVERY.out.best_core_motif
+    grid_summary_tsv      = CBMDISCOVERY.out.grid_summary_tsv
+    motif_metrics_json    = CBMDISCOVERY.out.motif_metrics_json
+    best_background       = CBMDISCOVERY.out.best_background
+    bipartite_spacing     = CBMDISCOVERY.out.bipartite_spacing
+    best_auxiliary_motif  = CBMDISCOVERY.out.best_auxiliary_motif
+    masked_fasta          = CBMDISCOVERY.out.masked_fasta
+    discovery_report      = CBMDISCOVERY.out.discovery_report
+    multiqc_report        = CBMDISCOVERY.out.multiqc_report // channel: /path/to/multiqc_report.html
+    versions              = CBMDISCOVERY.out.versions
 }
 
 /*
@@ -214,15 +222,23 @@ workflow {
     )
 
     publish:
-    candidate_anchors = NFCORE_CBMDISCOVERY.out.candidate_anchors
-    break_windows     = NFCORE_CBMDISCOVERY.out.break_windows
-    junction_catalog  = NFCORE_CBMDISCOVERY.out.junction_catalog
-    census_json       = NFCORE_CBMDISCOVERY.out.census_json
-    best_core_motif   = NFCORE_CBMDISCOVERY.out.best_core_motif
-    bipartite_spacing = NFCORE_CBMDISCOVERY.out.bipartite_spacing
-    discovery_report  = NFCORE_CBMDISCOVERY.out.discovery_report
-    multiqc_report    = NFCORE_CBMDISCOVERY.out.multiqc_report
-    versions          = NFCORE_CBMDISCOVERY.out.versions
+    candidate_anchors     = NFCORE_CBMDISCOVERY.out.candidate_anchors
+    telomeric_reads_fastq = NFCORE_CBMDISCOVERY.out.telomeric_reads_fastq
+    anchor_summary_json   = NFCORE_CBMDISCOVERY.out.anchor_summary_json
+    break_windows         = NFCORE_CBMDISCOVERY.out.break_windows
+    junction_catalog      = NFCORE_CBMDISCOVERY.out.junction_catalog
+    census_json           = NFCORE_CBMDISCOVERY.out.census_json
+    baited_reads_fastq    = NFCORE_CBMDISCOVERY.out.baited_reads_fastq
+    best_core_motif       = NFCORE_CBMDISCOVERY.out.best_core_motif
+    grid_summary_tsv      = NFCORE_CBMDISCOVERY.out.grid_summary_tsv
+    motif_metrics_json    = NFCORE_CBMDISCOVERY.out.motif_metrics_json
+    best_background       = NFCORE_CBMDISCOVERY.out.best_background
+    bipartite_spacing     = NFCORE_CBMDISCOVERY.out.bipartite_spacing
+    best_auxiliary_motif  = NFCORE_CBMDISCOVERY.out.best_auxiliary_motif
+    masked_fasta          = NFCORE_CBMDISCOVERY.out.masked_fasta
+    discovery_report      = NFCORE_CBMDISCOVERY.out.discovery_report
+    multiqc_report        = NFCORE_CBMDISCOVERY.out.multiqc_report
+    versions              = NFCORE_CBMDISCOVERY.out.versions
 }
 
 /*
@@ -250,6 +266,18 @@ output {
         path { meta, _file -> cbm_publish_path(meta, "somatic_anchors") }
         mode params.publish_dir_mode
     }
+    anchor_summary_json {
+        path { meta, _file -> cbm_publish_path(meta, "01_anchor_fishing") }
+        mode params.publish_dir_mode
+    }
+    telomeric_reads_fastq {
+        path { meta, _file -> cbm_publish_path(meta, "read_capsules") }
+        mode params.publish_dir_mode
+    }
+    baited_reads_fastq {
+        path { meta, _file -> cbm_publish_path(meta, "read_capsules") }
+        mode params.publish_dir_mode
+    }
     break_windows {
         path { meta, _file -> cbm_publish_path(meta, "germline_junctions") }
         mode params.publish_dir_mode
@@ -266,8 +294,28 @@ output {
         path { meta, _file -> cbm_publish_path(meta, "core_motif") }
         mode params.publish_dir_mode
     }
+    grid_summary_tsv {
+        path { meta, _file -> cbm_publish_path(meta, "03_core_motif_grid") }
+        mode params.publish_dir_mode
+    }
+    motif_metrics_json {
+        path { meta, _file -> cbm_publish_path(meta, "03_core_motif_grid") }
+        mode params.publish_dir_mode
+    }
+    best_background {
+        path { meta, _file -> cbm_publish_path(meta, "03_core_motif_grid") }
+        mode params.publish_dir_mode
+    }
     bipartite_spacing {
         path { meta, _file -> cbm_publish_path(meta, "bipartite_profiler") }
+        mode params.publish_dir_mode
+    }
+    best_auxiliary_motif {
+        path { meta, _file -> cbm_publish_path(meta, "04_bipartite_profiling") }
+        mode params.publish_dir_mode
+    }
+    masked_fasta {
+        path { meta, _file -> cbm_publish_path(meta, "04_bipartite_profiling") }
         mode params.publish_dir_mode
     }
     discovery_report {

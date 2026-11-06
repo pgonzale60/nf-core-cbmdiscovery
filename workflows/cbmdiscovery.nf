@@ -155,18 +155,22 @@ workflow CBMDISCOVERY {
     )
 
     emit:
-    telomeric_reads_fastq = FISHTELOMERICANCHORS.out.telomeric_reads_fastq
-    baited_reads_fastq    = BAITGERMLINEJUNCTIONS.out.baited_reads_fastq
     candidate_anchors     = FISHTELOMERICANCHORS.out.candidate_anchors
+    telomeric_reads_fastq = FISHTELOMERICANCHORS.out.telomeric_reads_fastq
+    anchor_summary_json   = FISHTELOMERICANCHORS.out.summary_json
     break_windows         = BAITGERMLINEJUNCTIONS.out.break_windows_fasta
     break_windows_fasta   = BAITGERMLINEJUNCTIONS.out.break_windows_fasta
     junction_catalog      = BAITGERMLINEJUNCTIONS.out.junction_catalog
     census_json           = BAITGERMLINEJUNCTIONS.out.census_json
+    baited_reads_fastq    = BAITGERMLINEJUNCTIONS.out.baited_reads_fastq
     best_core_motif       = MEMECOREGRID.out.best_core_motif
     grid_summary_tsv      = MEMECOREGRID.out.grid_summary_tsv
-    best_auxiliary_motif  = BIPARTITEPROFILER.out.best_auxiliary_motif
+    motif_metrics_json    = MEMECOREGRID.out.motif_metrics_json
+    best_background       = MEMECOREGRID.out.best_background
     bipartite_spacing     = BIPARTITEPROFILER.out.bipartite_spacing_tsv
     bipartite_spacing_tsv = BIPARTITEPROFILER.out.bipartite_spacing_tsv
+    best_auxiliary_motif  = BIPARTITEPROFILER.out.best_auxiliary_motif
+    masked_fasta          = BIPARTITEPROFILER.out.masked_fasta
     discovery_report      = BIPARTITEPROFILER.out.discovery_report_md
     discovery_report_md   = BIPARTITEPROFILER.out.discovery_report_md
     multiqc_report        = MULTIQC.out.report.map { _meta, report -> [report] }.toList()
