@@ -1,97 +1,87 @@
 {
-  "schema_version": "1.0.0",
-  "description": "Authoritative inter-module TSV contracts across nf-core/cbmdiscovery pipeline.",
-  "contracts": {
-    "junction_catalog.tsv": {
-      "file_pattern": "*.junction_catalog.tsv",
-      "producer_module": "BAITGERMLINEJUNCTIONS",
-      "producer_script": "modules/local/baitgermlinejunctions/resources/usr/bin/cbm_bait_germline_junctions.py",
-      "consumer_modules": [
-        "CBMDISCOVERY"
-      ],
-      "columns": [
-        "anchor_id",
-        "classification",
-        "c_telo",
-        "c_germ",
-        "coherence",
-        "microhomology_len",
-        "microhomology_motif",
-        "soma_flank_len",
-        "germ_flank_len",
-        "collapsed_copies"
-      ],
-      "status_column": "classification",
-      "allowed_statuses": [
-        "PDE_BREAK_SITE",
-        "GERMLINE_NATIVE_TELOMERE",
-        "SHARED_NATIVE_TELOMERE",
-        "TANDEM_SATELLITE_ARRAY",
-        "UNBROKEN_GERMLINE_LOCUS",
-        "LOW_COHERENCE_JUNCTION",
-        "CANDIDATE_TELOMERE"
-      ]
-    },
-    "core_grid_summary.tsv": {
-      "file_pattern": "*.core_grid_summary.tsv",
-      "producer_module": "MEMECOREGRID",
-      "producer_script": "modules/local/memecoregrid/resources/usr/bin/cbm_meme_core_grid.py",
-      "consumer_modules": [
-        "CBMDISCOVERY"
-      ],
-      "columns": [
-        "phase",
-        "condition_id",
-        "radius",
-        "markov_order",
-        "mod",
-        "revcomp",
-        "pal",
-        "w_label",
-        "width",
-        "nsites",
-        "evalue",
-        "consensus",
-        "total_ic",
-        "mean_ic",
-        "consensus_entropy",
-        "occupancy",
-        "median_offset_to_pos0",
-        "positional_iqr",
-        "telomeric_echo_fraction",
-        "rejection_flag",
-        "composite_score"
-      ],
-      "allowed_models": [
-        "zoops",
-        "anr",
-        "oops"
-      ]
-    },
-    "bipartite_spacing_summary.tsv": {
-      "file_pattern": "*.bipartite_spacing_summary.tsv",
-      "producer_module": "BIPARTITEPROFILER",
-      "producer_script": "modules/local/bipartiteprofiler/resources/usr/bin/cbm_bipartite_profiler.py",
-      "consumer_modules": [
-        "CBMDISCOVERY"
-      ],
-      "columns": [
-        "sequence_name",
-        "core_start",
-        "core_stop",
-        "core_strand",
-        "core_offset_to_pos0",
-        "has_partner",
-        "partner_type",
-        "partner_domain",
-        "partner_start",
-        "partner_stop",
-        "partner_strand",
-        "partner_offset_to_pos0",
-        "spacer_bp",
-        "spacer_type",
-        "relative_strand"
-      ]
+    "schema_version": "1.0.0",
+    "description": "Authoritative inter-module TSV contracts across nf-core/cbmdiscovery pipeline.",
+    "contracts": {
+        "junction_catalog.tsv": {
+            "file_pattern": "*.junction_catalog.tsv",
+            "producer_module": "BAITGERMLINEJUNCTIONS",
+            "producer_script": "modules/local/baitgermlinejunctions/resources/usr/bin/cbm_bait_germline_junctions.py",
+            "consumer_modules": ["CBMDISCOVERY"],
+            "columns": [
+                "anchor_id",
+                "classification",
+                "c_telo",
+                "c_germ",
+                "coherence",
+                "microhomology_len",
+                "microhomology_motif",
+                "soma_flank_len",
+                "germ_flank_len",
+                "collapsed_copies"
+            ],
+            "status_column": "classification",
+            "allowed_statuses": [
+                "PDE_BREAK_SITE",
+                "GERMLINE_NATIVE_TELOMERE",
+                "SHARED_NATIVE_TELOMERE",
+                "TANDEM_SATELLITE_ARRAY",
+                "UNBROKEN_GERMLINE_LOCUS",
+                "LOW_COHERENCE_JUNCTION",
+                "CANDIDATE_TELOMERE"
+            ]
+        },
+        "core_grid_summary.tsv": {
+            "file_pattern": "*.core_grid_summary.tsv",
+            "producer_module": "MEMECOREGRID",
+            "producer_script": "modules/local/memecoregrid/resources/usr/bin/cbm_meme_core_grid.py",
+            "consumer_modules": ["CBMDISCOVERY"],
+            "columns": [
+                "phase",
+                "condition_id",
+                "radius",
+                "markov_order",
+                "mod",
+                "revcomp",
+                "pal",
+                "w_label",
+                "width",
+                "nsites",
+                "evalue",
+                "consensus",
+                "total_ic",
+                "mean_ic",
+                "consensus_entropy",
+                "occupancy",
+                "median_offset_to_pos0",
+                "positional_iqr",
+                "telomeric_echo_fraction",
+                "rejection_flag",
+                "composite_score"
+            ],
+            "allowed_models": ["zoops", "anr", "oops"]
+        },
+        "bipartite_spacing_summary.tsv": {
+            "file_pattern": "*.bipartite_spacing_summary.tsv",
+            "producer_module": "BIPARTITEPROFILER",
+            "producer_script": "modules/local/bipartiteprofiler/resources/usr/bin/cbm_bipartite_profiler.py",
+            "consumer_modules": ["CBMDISCOVERY"],
+            "columns": [
+                "sequence_name",
+                "core_start",
+                "core_stop",
+                "core_strand",
+                "core_offset_to_pos0",
+                "has_partner",
+                "partner_type",
+                "partner_domain",
+                "partner_start",
+                "partner_stop",
+                "partner_strand",
+                "partner_offset_to_pos0",
+                "spacer_bp",
+                "spacer_type",
+                "relative_strand"
+            ]
+        }
     }
-  }
 }

@@ -1,3 +1,4 @@
+import shutil
 #!/usr/bin/env python3
 """Comprehensive TDD Test Suite for v3.2 Tool-First Architecture."""
 
@@ -56,6 +57,7 @@ class TestV3Optimizations(unittest.TestCase):
         for cheat in ['"AA"', '"CC"', '"GC"']:
             self.assertNotIn(cheat, det_code)
 
+    @unittest.skipUnless(shutil.which("bbduk.sh") and shutil.which("fml-asm"), "bbduk.sh and fml-asm required")
     def test_no_python_greedy_mate_extension_fallback(self):
         """2. Assert no python greedy mate extension fallback and fermi-lite Y-junction reconstruction."""
         recon_path = (
@@ -204,6 +206,7 @@ class TestV3Optimizations(unittest.TestCase):
             )
             self.assertEqual(direct_cons, germline_180[:150])
 
+    @unittest.skipUnless(shutil.which("meme"), "meme required")
     def test_palindromic_condition_and_core_echo_rejection(self):
         """3. Assert palindromic condition in Phase 3, <=21 grid runs, and core echo rejection."""
         core_motif = "GATCGTACGATCGT"  # 14 bp

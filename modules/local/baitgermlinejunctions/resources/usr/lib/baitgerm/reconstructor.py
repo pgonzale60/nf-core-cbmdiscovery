@@ -80,11 +80,8 @@ def reconstruct_germline_consensus(
         return "", 0.0
 
     vsearch_bin = shutil.which("vsearch")
-    fml_bin = shutil.which("fml-asm")
     if not vsearch_bin:
         raise RuntimeError("Required binary 'vsearch' not found in PATH")
-    if not fml_bin:
-        raise RuntimeError("Required binary 'fml-asm' not found in PATH")
 
     all_mates = list(local_reads or []) + list(mate_reads or [])
     consensus_seq = ""
@@ -141,6 +138,9 @@ def reconstruct_germline_consensus(
 
     # Case B: Assembly via fermi-lite (fml-asm)
     if len(consensus_seq) < target_len and (anchor_seq or all_mates):
+        fml_bin = shutil.which("fml-asm")
+        if not fml_bin:
+            raise RuntimeError("Required binary 'fml-asm' not found in PATH")
         reads_to_assemble = list(all_mates)
         for ext in germline_extensions[:200]:
             r_full = (anchor_seq[-50:] if anchor_seq else "") + ext
