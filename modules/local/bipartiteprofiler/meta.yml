@@ -30,6 +30,10 @@ input:
     - core_metrics_json:
         type: file
         description: Core motif metrics JSON
+    - best_background:
+        type: file
+        description: 0-order Markov background model file from MEMECOREGRID
+        pattern: "*.best_background.bfile"
 output:
   - best_auxiliary_motif:
       - meta:
@@ -58,10 +62,27 @@ output:
           description: Groovy Map containing sample information
       - "*.core_masked.fasta":
           type: file
-          description: Core-masked 300 bp break windows FASTA
-  - versions:
-      - versions.yml:
-          type: file
-          description: File containing software versions
+          description: Break windows FASTA with core CBM motif occurrences masked with N (*.core_masked_windows.fasta)
+          pattern: "*.core_masked.fasta"
+  - versions_python:
+      - "${task.process}":
+          type: string
+          description: Process name
+      - python:
+          type: string
+          description: Tool name
+      - "eval(...)":
+          type: string
+          description: Tool version
+  - versions_meme:
+      - "${task.process}":
+          type: string
+          description: Process name
+      - meme:
+          type: string
+          description: Tool name
+      - "eval(...)":
+          type: string
+          description: Tool version
 authors:
   - "@pgonzale60"

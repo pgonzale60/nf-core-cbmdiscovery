@@ -40,7 +40,8 @@ output:
           description: Groovy Map containing sample information
       - "*.break_windows_300bp.fasta":
           type: file
-          description: FASTA of 300 bp reconstructed break windows for PDE break sites
+          description: FASTA containing 600 bp total sequence windows ([-300 .. +300] bp flank radius centered at Position 0) for PDE break sites
+          pattern: "*.break_windows_300bp.fasta"
   - junction_catalog:
       - meta:
           type: map
@@ -55,9 +56,23 @@ output:
       - "*.coverage_and_chromosome_census.json":
           type: file
           description: JSON file summarizing coverage and chromosome census
-  - versions:
-      - versions.yml:
+  - baited_reads_fastq:
+      - meta:
+          type: map
+          description: Groovy Map containing sample information
+      - "*.pass2_baited_reads.fastq.gz":
           type: file
-          description: File containing software versions
+          description: Gzipped FASTQ capsule of reads baited across candidate somatic-germline junctions
+          pattern: "*.pass2_baited_reads.fastq.gz"
+  - versions_python:
+      - "${task.process}":
+          type: string
+          description: Process name
+      - python:
+          type: string
+          description: Tool name
+      - "eval(...)":
+          type: string
+          description: Tool version
 authors:
   - "@pgonzale60"
