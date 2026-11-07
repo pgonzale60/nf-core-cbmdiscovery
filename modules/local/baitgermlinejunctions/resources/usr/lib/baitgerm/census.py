@@ -386,6 +386,9 @@ def deconvolve_and_census(
     n_satellite = sum(
         1 for l in loci if l["classification"] == "TANDEM_SATELLITE_ARRAY"
     )
+    n_itr_excluded = sum(
+        1 for l in loci if l["classification"] == "INTERSTITIAL_TELOMERIC_REPEAT"
+    )
 
     census = {
         "median_c_soma": round(med_c_soma, 2),
@@ -396,6 +399,7 @@ def deconvolve_and_census(
         "estimated_germline_chromosomes": round(n_germ_telo / 2.0, 1),
         "n_shared_telo": n_shared_telo,
         "n_satellite_excluded": n_satellite,
+        "n_itr_excluded": n_itr_excluded,
     }
 
     return loci, census

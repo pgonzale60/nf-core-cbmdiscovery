@@ -91,6 +91,7 @@ def verify_schemas_structure() -> tuple[dict, dict]:
         "GERMLINE_NATIVE_TELOMERE",
         "SHARED_NATIVE_TELOMERE",
         "TANDEM_SATELLITE_ARRAY",
+        "INTERSTITIAL_TELOMERIC_REPEAT",
         "UNBROKEN_GERMLINE_LOCUS",
         "LOW_COHERENCE_JUNCTION",
         "CANDIDATE_TELOMERE",
@@ -124,6 +125,7 @@ def verify_schemas_structure() -> tuple[dict, dict]:
         "estimated_germline_chromosomes",
         "n_shared_telo",
         "n_satellite_excluded",
+        "n_itr_excluded",
     ]
     actual_required = census_schema.get("required", [])
     assert actual_required == required_census_keys, (
@@ -161,6 +163,31 @@ def verify_live_code_contracts(tsv_contracts: dict) -> None:
         f"Schema drift in {jc_path}: code fieldnames {jc_cols} != contract columns {expected_jc}"
     )
     print("✓ BAITGERMLINEJUNCTIONS (junction_catalog.tsv) columns match live code (lines 260-280).")
+
+    # Verify all classifications assigned in baitgerm/census.py against allowed_statuses
+    census_lib_path = (
+        REPO_ROOT
+        / "modules"
+        / "local"
+        / "baitgermlinejunctions"
+        / "resources"
+        / "usr"
+        / "lib"
+        / "baitgerm"
+        / "census.py"
+    )
+    assert census_lib_path.is_file(), f"Source file does not exist: {census_lib_path}"
+    census_code = census_lib_path.read_text(encoding="utf-8")
+    assigned_classifications = set(
+        re.findall(r'loc\[["\']classification["\']\]\s*=\s*["\']([^"\']+)["\']', census_code)
+    )
+    assert assigned_classifications, f"No loc['classification'] assignments found in {census_lib_path}"
+    allowed_statuses = set(contracts["junction_catalog.tsv"].get("allowed_statuses", []))
+    missing_statuses = assigned_classifications - allowed_statuses
+    assert not missing_statuses, (
+        f"Locus classification(s) in {census_lib_path} missing from junction_catalog.tsv allowed_statuses: {missing_statuses}"
+    )
+    print("✓ All locus classifications in baitgerm/census.py are present in junction_catalog.tsv allowed_statuses.")
 
     # 2. MEMECOREGRID (core_grid_summary.tsv)
     cg_path = (

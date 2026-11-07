@@ -182,6 +182,8 @@ class TestBaitGermlineJunctions(unittest.TestCase):
 
         self.assertEqual(census["n_breaks"], 2)
         self.assertEqual(census["n_germ_telo"], 2)
+        self.assertEqual(census["n_satellite_excluded"], 0)
+        self.assertEqual(census["n_itr_excluded"], 0)
         self.assertEqual(census["median_c_soma"], 31.5)
         self.assertEqual(census["median_c_germ"], 12.0)
         self.assertAlmostEqual(census["germline_fraction"], 0.28, places=2)
@@ -379,6 +381,7 @@ class TestBaitGermlineJunctions(unittest.TestCase):
         self.assertEqual(class_map["a_itr"], "INTERSTITIAL_TELOMERIC_REPEAT")
         self.assertEqual(class_map["a_break"], "PDE_BREAK_SITE")
         self.assertEqual(census["n_breaks"], 1)
+        self.assertEqual(census["n_itr_excluded"], 1)
 
     def test_adaptive_germ_cutoff_demotes_low_depth_artifacts(self):
         # Candidate break sites establish median germline coverage C_germ = 79
