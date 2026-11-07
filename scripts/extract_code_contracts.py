@@ -31,11 +31,11 @@ CENSUS_SCHEMA_PATH = REPO_ROOT / "assets" / "schemas" / "cbm_census.schema.json"
 TSV_CONTRACTS_PATH = REPO_ROOT / "assets" / "schemas" / "inter_module_tsv_contracts.json"
 
 INCLUDE_RE = re.compile(
-    r"^\s*include\s*\{\s*([^}]+?)\s*\}\s*from\s*['\"]([^'\"]+)['\"]",
+    r"^[ \t]*include\s*\{\s*([^}]+?)\s*\}\s*from\s*['\"]([^'\"]+)['\"]",
     re.MULTILINE,
 )
-WORKFLOW_HEADER_RE = re.compile(r"^\s*workflow(?:\s+([A-Za-z0-9_]+))?\s*\{", re.MULTILINE)
-PROCESS_HEADER_RE = re.compile(r"^\s*process\s+([A-Za-z0-9_]+)\s*\{", re.MULTILINE)
+WORKFLOW_HEADER_RE = re.compile(r"^[ \t]*workflow(?:\s+([A-Za-z0-9_]+))?\s*\{", re.MULTILINE)
+PROCESS_HEADER_RE = re.compile(r"^[ \t]*process\s+([A-Za-z0-9_]+)\s*\{", re.MULTILINE)
 
 
 def _strip_nf_comments(line: str) -> str:
@@ -104,10 +104,13 @@ def parse_nextflow_file(nf_path: pathlib.Path) -> dict:
         start_line = text[: match.start()].count("\n")
         brace_depth = 0
         wf_lines = []
+        started = False
         for line in lines[start_line:]:
             wf_lines.append(line)
             brace_depth += line.count("{") - line.count("}")
-            if brace_depth <= 0:
+            if "{" in line:
+                started = True
+            if started and brace_depth <= 0:
                 break
 
         take_items = []
@@ -130,10 +133,13 @@ def parse_nextflow_file(nf_path: pathlib.Path) -> dict:
         start_line = text[: match.start()].count("\n")
         brace_depth = 0
         proc_lines = []
+        started = False
         for line in lines[start_line:]:
             proc_lines.append(line)
             brace_depth += line.count("{") - line.count("}")
-            if brace_depth <= 0:
+            if "{" in line:
+                started = True
+            if started and brace_depth <= 0:
                 break
 
         input_items = []
