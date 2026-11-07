@@ -206,7 +206,7 @@
 
 | Symbol | Kind | Lines | Signature | Summary |
 | :--- | :--- | :--- | :--- | :--- |
-| `generate_cbm_discovery_report` | `function` | `L9-L107` | `def generate_cbm_discovery_report(sample_id: str, census_json_path: str \| Path, core_metrics_json_path: str \| Path, best_aux_motif: dict[str, Any] \| None, bipartite_summary: dict[str, Any], output_report_md: str \| Path)` | Generate comprehensive cbm_discovery_report.md markdown summary. |
+| `generate_cbm_discovery_report` | `function` | `L9-L111` | `def generate_cbm_discovery_report(sample_id: str, census_json_path: str \| Path, core_metrics_json_path: str \| Path, best_aux_motif: dict[str, Any] \| None, bipartite_summary: dict[str, Any], output_report_md: str \| Path)` | Generate comprehensive cbm_discovery_report.md markdown summary. |
 
 ### `modules/local/bipartiteprofiler/resources/usr/lib/bipartite/spacing.py`
 

@@ -163,6 +163,37 @@ class TestBipartiteProfiler(unittest.TestCase):
             self.assertIn("Located in Retained Region", report_text)
             self.assertIn("Located in Eliminated Region", report_text)
 
+            # Test Single-Motif Architecture (core found, no aux motif)
+            generate_cbm_discovery_report(
+                sample_id="test_species_single",
+                census_json_path=f_census.name,
+                core_metrics_json_path=f_core.name,
+                best_aux_motif=None,
+                bipartite_summary={},
+                output_report_md=f_rep.name,
+            )
+            single_rep_text = pathlib.Path(f_rep.name).read_text(encoding="utf-8")
+            self.assertIn("### Single-Motif Architecture", single_rep_text)
+            self.assertIn("- No statistically significant auxiliary motif detected after core motif masking.", single_rep_text)
+            self.assertNotIn("The cleavage system operates", single_rep_text)
+
+            # Test Non-Motif Architecture (no core motif found, no aux motif)
+            with tempfile.NamedTemporaryFile("w", suffix=".json") as f_empty_core:
+                f_empty_core.write("{}")
+                f_empty_core.flush()
+                generate_cbm_discovery_report(
+                    sample_id="test_species_nomotif",
+                    census_json_path=f_census.name,
+                    core_metrics_json_path=f_empty_core.name,
+                    best_aux_motif=None,
+                    bipartite_summary={},
+                    output_report_md=f_rep.name,
+                )
+                nomotif_rep_text = pathlib.Path(f_rep.name).read_text(encoding="utf-8")
+                self.assertIn("### Non-Motif Architecture", nomotif_rep_text)
+                self.assertIn("- No statistically significant core or auxiliary recognition motif detected.", nomotif_rep_text)
+                self.assertNotIn("The cleavage system operates", nomotif_rep_text)
+
     def test_score_auxiliary_candidate_favors_longer_palindrome_over_core_hexamer(self):
         # 11 bp imperfect palindrome (e.g. ATAGCGCTAT) across 15 sequences
         pal_11bp = {

@@ -94,11 +94,15 @@ def generate_cbm_discovery_report(
         ])
         if bipartite_summary.get("pct_spanning_domain", 0.0) > 0:
             md.append(f"- **Spanning Cleavage Junction**: `{bipartite_summary.get('pct_spanning_domain')}%`")
+    elif core_metrics:
+        md.extend([
+            "### Single-Motif Architecture\n",
+            "- No statistically significant auxiliary motif detected after core motif masking.",
+        ])
     else:
         md.extend([
-            "### Simple (Single Motif) Architecture\n",
-            "- No statistically significant auxiliary motif was detected after core masking.",
-            "- The cleavage system operates primarily via the single core recognition element.",
+            "### Non-Motif Architecture\n",
+            "- No statistically significant core or auxiliary recognition motif detected.",
         ])
 
     md.append("\n---\n")
