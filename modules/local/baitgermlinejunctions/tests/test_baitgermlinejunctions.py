@@ -1,3 +1,4 @@
+import shutil
 #!/usr/bin/env python3
 """Unit tests for baitgermlinejunctions module."""
 
@@ -211,6 +212,7 @@ class TestBaitGermlineJunctions(unittest.TestCase):
         self.assertEqual(deduped[0]["c_telo"], 25)
         self.assertEqual(deduped[0]["c_germ"], 6)
 
+    @unittest.skipUnless(shutil.which("fml-asm"), "fml-asm binary required for de novo assembly test")
     def test_illumina_short_prefix_and_mate_extension(self):
         # 150 bp somatic anchor ending at pos 0
         soma = self.anchor_seq
